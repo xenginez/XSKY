@@ -1,10 +1,10 @@
 ﻿cmake_minimum_required (VERSION 3.8)
 
-project ("sky")
+project ("XSKY")
 
 if(CMAKE_SYSTEM_NAME MATCHES "Linux")
-add_subdirectory("driver")
-add_subdirectory("control")
+add_subdirectory("route")
+add_subdirectory("server")
 else()
-add_subdirectory("interface")
+add_subdirectory("control")
 endif()

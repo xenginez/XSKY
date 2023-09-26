@@ -1,17 +1,10 @@
-#include <asio.hpp>
+#include "MainWindow.h"
+#include <QtWidgets/QApplication>
 
-#include "control.h"
-
-int main( int argc, char * argv[] )
+int main(int argc, char *argv[])
 {
-	control ctl;
-
-#ifdef CONFIG_ROUTE
-	ctl.address( inet_addr( "119.28.88.21" ) );
-#endif // CONFIG_ROUTE
-
-
-	getchar();
-
-	return 0;
+    QApplication a(argc, argv);
+    MainWindow w;
+    w.show();
+    return a.exec();
 }

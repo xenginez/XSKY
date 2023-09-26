@@ -1,4 +1,4 @@
-obj-m := sky.o
+obj-m := server.o
 
 KNAME:= $(shell uname -r)
 KDIR:= /lib/modules/$(KNAME)/build
@@ -9,5 +9,5 @@ clean:
 	rm -f .*.cmd *.o *.ko *.mod *.mod.c modules.order Module.symvers
 	rm -rf .tmp_versions
 install:
-	test -d "$(DESTDIR)/lib/modules/$(KNAME)/extra/net/sky" || mkdir -p "$(DESTDIR)/lib/modules/$(KNAME)/extra/net/sky"
-	cp *.ko "$(DESTDIR)/lib/modules/$(KNAME)/extra/net/sky"
+	test -d "$(DESTDIR)/lib/modules/$(KNAME)/extra/net/server" || mkdir -p "$(DESTDIR)/lib/modules/$(KNAME)/extra/net/server"
+	cp *.ko "$(DESTDIR)/lib/modules/$(KNAME)/extra/net/server"

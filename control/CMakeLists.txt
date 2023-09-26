@@ -1,6 +1,40 @@
-﻿cmake_minimum_required (VERSION 3.8)
+cmake_minimum_required(VERSION 3.16)
+project(control LANGUAGES CXX)
 
-add_executable (control "main.cpp" "control.h" "control.cpp")
-target_include_directories(control PRIVATE ${CMAKE_SOURCE_DIR}/3rdparty)
-target_compile_definitions(control PRIVATE -DCONFIG_IPV6)
- 
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core)
+find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Core Gui Widgets Network REQUIRED)
+
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
+set(CMAKE_AUTOUIC ON)
+
+set(PROJECT_SOURCES
+    icon.qrc
+    main.cpp
+    Controller.h
+    Controller.cpp
+    MainWindow.ui
+    MainWindow.h
+    MainWindow.cpp
+    WaitDialog.ui
+    WaitDialog.h
+    WaitDialog.cpp
+    DomainListDialog.ui
+    DomainListDialog.h
+    DomainListDialog.cpp
+    ServerListDialog.ui
+    ServerListDialog.h
+    ServerListDialog.cpp
+    ProtocolDialog.ui
+    ProtocolDialog.h
+    ProtocolDialog.cpp
+)
+
+add_executable(control ${PROJECT_SOURCES})
+
+set_target_properties(control PROPERTIES WIN32_EXECUTABLE TRUE)
+
+target_link_libraries(control PUBLIC Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
