@@ -29,6 +29,11 @@
      </column>
      <column>
       <property name="text">
+       <string>类型</string>
+      </property>
+     </column>
+     <column>
+      <property name="text">
        <string>描述</string>
       </property>
      </column>

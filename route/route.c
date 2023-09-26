@@ -1,6 +1,6 @@
 #include "route.h"
 
-struct sky_device * device_sky;
+struct route_device * _device;
 
 static unsigned int hash_route_sky( sky_data * data )
 {
@@ -17,16 +17,16 @@ static unsigned int hash_route_sky( sky_data * data )
 	return _Val;
 }
 
-static void insert_route_sky( struct sky_data_pair * pair )
+static void insert_route_sky( struct nat_data * pair )
 {
 	int i = 0;
-	struct sky_data_page * tmp = NULL;
-	struct sky_data_page * page = NULL;
-	unsigned int first_hash = hash_route_sky( &pair->first );
-	unsigned int second_hash = hash_route_sky( &pair->second );
+	struct nat_data_page * tmp = NULL;
+	struct nat_data_page * page = NULL;
+	unsigned int first_hash = hash_route_sky( &pair->key );
+	unsigned int second_hash = hash_route_sky( &pair->value );
 
 	i = 0;
-	page = device_sky->routes[first_hash % SKY_DATA_BUCKET_SIZE].pages;
+	page = _device->routes[first_hash % SKY_DATA_BUCKET_SIZE].pages;
 	while ( page != NULL )
 	{
 		if ( page->used < SKY_DATA_PAIR_SIZE )
@@ -38,15 +38,15 @@ static void insert_route_sky( struct sky_data_pair * pair )
 	}
 	if ( page == NULL )
 	{
-		page = vzalloc( sizeof( struct sky_data_page ) );
+		page = vzalloc( sizeof( struct nat_data_page ) );
 
-		tmp = device_sky->routes[first_hash % SKY_DATA_BUCKET_SIZE].pages;
-		device_sky->routes[first_hash % SKY_DATA_BUCKET_SIZE].pages = page;
+		tmp = _device->routes[first_hash % SKY_DATA_BUCKET_SIZE].pages;
+		_device->routes[first_hash % SKY_DATA_BUCKET_SIZE].pages = page;
 		page->next = tmp;
 	}
 	for ( ; i < SKY_DATA_PAIR_SIZE; ++i )
 	{
-		if ( page->pairs[i].first.v4.code == 0 )
+		if ( page->pairs[i].key.v4.code == 0 )
 		{
 			page->pairs[i] = *pair;
 			page->used++;
@@ -55,7 +55,7 @@ static void insert_route_sky( struct sky_data_pair * pair )
 	}
 
 	i = 0;
-	page = device_sky->routes[second_hash % SKY_DATA_BUCKET_SIZE].pages;
+	page = _device->routes[second_hash % SKY_DATA_BUCKET_SIZE].pages;
 	while ( page != NULL )
 	{
 		if ( page->used < SKY_DATA_PAIR_SIZE )
@@ -67,40 +67,40 @@ static void insert_route_sky( struct sky_data_pair * pair )
 	}
 	if ( page == NULL )
 	{
-		page = vzalloc( sizeof( struct sky_data_page ) );
+		page = vzalloc( sizeof( struct nat_data_page ) );
 
-		tmp = device_sky->routes[second_hash % SKY_DATA_BUCKET_SIZE].pages;
-		device_sky->routes[second_hash % SKY_DATA_BUCKET_SIZE].pages = page;
+		tmp = _device->routes[second_hash % SKY_DATA_BUCKET_SIZE].pages;
+		_device->routes[second_hash % SKY_DATA_BUCKET_SIZE].pages = page;
 		page->next = tmp;
 	}
 	for ( ; i < SKY_DATA_PAIR_SIZE; ++i )
 	{
-		if ( page->pairs[i].first.v4.code == 0 )
+		if ( page->pairs[i].key.v4.code == 0 )
 		{
-			page->pairs[i].first = pair->second;
-			page->pairs[i].second = pair->first;
+			page->pairs[i].key = pair->value;
+			page->pairs[i].value = pair->key;
 			page->used++;
 			break;
 		}
 	}
 }
 
-static struct sky_data_pair * find_route_sky( sky_data * data )
+static struct nat_data * find_route_sky( sky_data * data )
 {
 	int i = 0;
-	struct sky_data_page * page = NULL;
+	struct nat_data_page * page = NULL;
 	unsigned int hash = hash_route_sky( data );
 
-	page = device_sky->routes[hash % SKY_DATA_BUCKET_SIZE].pages;
+	page = _device->routes[hash % SKY_DATA_BUCKET_SIZE].pages;
 	while ( page != NULL )
 	{
 		i = 0;
 		for ( ; i < SKY_DATA_PAIR_SIZE; ++i )
 		{
-			if ( page->pairs[i].first.v4.code == data->v4.code && 
-				 page->pairs[i].first.v4.size == data->v4.size &&
-				 page->pairs[i].first.v4.addr == data->v4.addr &&
-				 page->pairs[i].first.v4.port == data->v4.port )
+			if ( page->pairs[i].key.v4.code == data->v4.code && 
+				 page->pairs[i].key.v4.size == data->v4.size &&
+				 page->pairs[i].key.v4.addr == data->v4.addr &&
+				 page->pairs[i].key.v4.port == data->v4.port )
 			{
 				return &page->pairs[i];
 			}
@@ -113,31 +113,31 @@ static struct sky_data_pair * find_route_sky( sky_data * data )
 
 static void remove_route_sky( sky_data * data )
 {
-	struct sky_data_pair * pair = find_route_sky( data );
+	struct nat_data * pair = find_route_sky( data );
 	int i = 0;
-	struct sky_data_page * page = NULL;
+	struct nat_data_page * page = NULL;
 	unsigned int first_hash = 0;
 	unsigned int second_hash = 0;
 
 	if ( pair != NULL )
 	{
-		first_hash = hash_route_sky( &pair->first );
-		second_hash = hash_route_sky( &pair->second );
+		first_hash = hash_route_sky( &pair->key );
+		second_hash = hash_route_sky( &pair->value );
 
 		i = 0;
-		page = device_sky->routes[first_hash % SKY_DATA_BUCKET_SIZE].pages;
+		page = _device->routes[first_hash % SKY_DATA_BUCKET_SIZE].pages;
 		while ( page != NULL )
 		{
 			if ( page->used > 0 )
 			{
 				for ( ; i < SKY_DATA_PAIR_SIZE; ++i )
 				{
-					if ( page->pairs[i].first.v4.code == pair->first.v4.code &&
-						 page->pairs[i].first.v4.size == pair->first.v4.size &&
-						 page->pairs[i].first.v4.addr == pair->first.v4.addr &&
-						 page->pairs[i].first.v4.port == pair->first.v4.port )
+					if ( page->pairs[i].key.v4.code == pair->key.v4.code &&
+						 page->pairs[i].key.v4.size == pair->key.v4.size &&
+						 page->pairs[i].key.v4.addr == pair->key.v4.addr &&
+						 page->pairs[i].key.v4.port == pair->key.v4.port )
 					{
-						memset( &page->pairs[i], 0, sizeof( struct sky_data_pair ) );
+						memset( &page->pairs[i], 0, sizeof( struct nat_data ) );
 						page->used--;
 						break;
 					}
@@ -148,19 +148,19 @@ static void remove_route_sky( sky_data * data )
 		}
 
 		i = 0;
-		page = device_sky->routes[second_hash % SKY_DATA_BUCKET_SIZE].pages;
+		page = _device->routes[second_hash % SKY_DATA_BUCKET_SIZE].pages;
 		while ( page != NULL )
 		{
 			if ( page->used > 0 )
 			{
 				for ( ; i < SKY_DATA_PAIR_SIZE; ++i )
 				{
-					if ( page->pairs[i].first.v4.code == pair->second.v4.code &&
-						 page->pairs[i].first.v4.size == pair->second.v4.size &&
-						 page->pairs[i].first.v4.addr == pair->second.v4.addr &&
-						 page->pairs[i].first.v4.port == pair->second.v4.port )
+					if ( page->pairs[i].key.v4.code == pair->value.v4.code &&
+						 page->pairs[i].key.v4.size == pair->value.v4.size &&
+						 page->pairs[i].key.v4.addr == pair->value.v4.addr &&
+						 page->pairs[i].key.v4.port == pair->value.v4.port )
 					{
-						memset( &page->pairs[i], 0, sizeof( struct sky_data_pair ) );
+						memset( &page->pairs[i], 0, sizeof( struct nat_data ) );
 						page->used--;
 						break;
 					}
@@ -324,7 +324,7 @@ static unsigned int route_pre_routing_sky( void * priv, struct sk_buff * skb, co
 			ip_h = ip_hdr( skb );
 			tcp_h = tcp_hdr( skb );
 
-			ip_h->daddr = device_sky->servers;
+			ip_h->daddr = _device->servers;
 			tcp_h->dest = htons( 48888 );
 		}
 
@@ -345,97 +345,6 @@ static unsigned int route_pre_routing_sky( void * priv, struct sk_buff * skb, co
 	return NF_ACCEPT;
 }
 
-static unsigned int server_pre_routing_sky( void * priv, struct sk_buff * skb, const struct nf_hook_state * state )
-{
-	struct iphdr * ip_h = ip_hdr( skb );
-	struct tcphdr * tcp_h;
-	//struct udphdr * udp_h;
-	//struct icmphdr * icmp_h;
-
-	sky_data data;
-	struct sky_data_pair pair;
-	struct sky_data_pair * p;
-
-	int data_len = 0;
-	unsigned char * data_ptr = NULL;
-
-	if ( ( (unsigned char *)( &ip_h->daddr ) )[0] == 192 ||
-		 ( (unsigned char *)( &ip_h->daddr ) )[0] == 127 )
-	{
-		return NF_ACCEPT;
-	}
-	else if ( likely( ip_h->protocol == IPPROTO_TCP ) )
-	{
-		if ( skb_is_nonlinear( skb ) )
-			if ( skb_linearize( skb ) )
-				return NF_DROP;
-
-		ip_h = ip_hdr( skb );
-		tcp_h = tcp_hdr( skb );
-
-		if ( tcp_h->dest == htons( 48888 ) )
-		{
-			if ( tcp_h->syn == 1 && tcp_h->ack == 0 )
-			{
-				get_toa_data_sky( skb, &data );
-
-				pair.first.v4.code = TCPOPT_V4_SKY;
-				pair.first.v4.size = TCPOLEN_V4_SKY;
-				pair.first.v4.addr = ip_h->saddr;
-				pair.first.v4.port = tcp_h->source;
-				pair.second = data;
-
-				insert_route_sky( &pair );
-			}
-			else if ( tcp_h->rst == 1 || tcp_h->fin == 1 )
-			{
-				data.v4.code = TCPOPT_V4_SKY;
-				data.v4.size = TCPOLEN_V4_SKY;
-				data.v4.addr = ip_h->saddr;
-				data.v4.port = tcp_h->source;
-
-				p = find_route_sky( &data );
-				if ( p == NULL )
-					return NF_ACCEPT;
-
-				pair = *p;
-				remove_route_sky( &data );
-			}
-			else
-			{
-				data.v4.code = TCPOPT_V4_SKY;
-				data.v4.size = TCPOLEN_V4_SKY;
-				data.v4.addr = ip_h->saddr;
-				data.v4.port = tcp_h->source;
-
-				p = find_route_sky( &data );
-				if ( p == NULL )
-					return NF_ACCEPT;
-
-				pair = *p;
-			}
-
-			ip_h->daddr = pair.second.v4.addr;
-			tcp_h->dest = pair.second.v4.port;
-
-			data_len = skb->len - ip_h->ihl * 4 - tcp_h->doff * 4;
-			data_ptr = skb->data + ip_h->ihl * 4 + tcp_h->doff * 4;
-
-			xor_data_sky( data_ptr, data_len );
-
-			ip_h->check = 0;
-			ip_h->check = ip_fast_csum( (unsigned char *)ip_h, ip_h->ihl );
-			if ( skb->ip_summed == CHECKSUM_HW )
-			{
-				tcp_h->check = csum_tcpudp_magic( ip_h->saddr, ip_h->daddr, ( ntohs( ip_h->tot_len ) - ip_h->ihl * 4 ), IPPROTO_TCP, csum_partial( tcp_h, ( ntohs( ip_h->tot_len ) - ip_h->ihl * 4 ), 0 ) );
-				skb->csum = offsetof( struct tcphdr, check );
-			}
-		}
-	}
-
-	return NF_ACCEPT;
-}
- 
 static struct nf_hook_ops nf_route_hooks_sky[] =
 {
 	{
@@ -446,122 +355,45 @@ static struct nf_hook_ops nf_route_hooks_sky[] =
 	}
 };
 
-static struct nf_hook_ops nf_server_hooks_sky[] =
+static int __init route_init( void )
 {
-	{
-		.hook = server_pre_routing_sky,
-		.pf = PF_INET,
-		.hooknum = NF_INET_LOCAL_IN,
-		.priority = NF_IP_PRI_FIRST,
-	}
-};
+	_device = kzalloc( sizeof( struct route_device ), GFP_KERNEL );
+	_device->routes = kzalloc( sizeof( struct nat_data_bucket ), GFP_KERNEL );
 
-
-static int file_open_sky( struct inode * inode, struct file * file )
-{
-	nf_register_net_hooks( &init_net, nf_route_hooks_sky, sizeof( nf_route_hooks_sky ) / sizeof( struct nf_hook_ops ) );
-
-	SKY_DBG( "open sky\n" );
-
-	return 0;
-}
-
-static ssize_t file_read_sky( struct file * file, char __user * buf, size_t count, loff_t * ppos )
-{
-	return 0;
-}
-
-static ssize_t file_write_sky( struct file * file, const char __user * buf, size_t count, loff_t * ppos )
-{
-	return 0;
-}
-
-static long file_control_sky( struct file * file, unsigned int cmd, unsigned long arg )
-{
-	if ( cmd == CMD_ROUTE_SKY )
-	{
-		device_sky->servers = arg;
-
-		SKY_DBG( "control set server ip: %u.%u.%u.%u\n", NIPV4( arg ) );
-	}
-
-	return 0;
-}
-
-static int file_release_sky( struct inode * inode, struct file * file )
-{
-	nf_unregister_net_hooks( &init_net, nf_route_hooks_sky, sizeof( nf_route_hooks_sky ) / sizeof( struct nf_hook_ops ) );
-
-	SKY_DBG( "close sky\n" );
-
-	return 0;
-}
-
-static const struct file_operations file_dev_hook_sky =
-{
-	.open = file_open_sky,
-	.release = file_release_sky,
-	.read = file_read_sky,
-	.write = file_write_sky,
-	.unlocked_ioctl = file_control_sky,
-};
-
-
-static int __init sky_init( void )
-{
-	device_sky = kzalloc( sizeof( struct sky_device ), GFP_KERNEL );
-
-	device_sky->routes = (struct sky_data_bucket *)vzalloc( sizeof( struct sky_data_bucket ) * SKY_DATA_BUCKET_SIZE );
-	device_sky->chrdev = register_chrdev( 0, FILE_NAME_SKY, &file_dev_hook_sky );
-	device_sky->cls = class_create( THIS_MODULE, FILE_NAME_SKY );
-	if ( IS_ERR( &device_sky->cls ) )
-	{
-		SKY_DBG( "class_create failed\n" );
-	}
-	device_sky->dev = device_create( device_sky->cls, NULL, MKDEV( device_sky->chrdev, 0 ), NULL, FILE_NAME_SKY );
-	if ( IS_ERR( &device_sky->dev ) )
-	{
-		SKY_DBG( "device_create failed\n" );
-	}
-
-	if ( nf_register_net_hooks( &init_net, nf_server_hooks_sky, sizeof( nf_server_hooks_sky ) / sizeof( struct nf_hook_ops ) ) != 0 )
+	if ( nf_register_net_hooks( &init_net, nf_route_hooks_sky, 1 ) != 0 )
 	{
 		SKY_DBG( "nf_register_net_hooks failed\n" );
 	}
 
-	SKY_DBG( "sky loaded\n" );
+	SKY_DBG( "xsky route loaded\n" );
 
 	return 0;
 }
 
-static void __exit sky_exit( void )
+static void __exit route_exit( void )
 {
 	int i = 0;
-	struct sky_data_page * page = NULL;
+	struct nat_data_page * page = NULL;
 
-	nf_unregister_net_hooks( &init_net, nf_server_hooks_sky, sizeof( nf_server_hooks_sky ) / sizeof( struct nf_hook_ops ) );
+	nf_unregister_net_hooks( &init_net, nf_route_hooks_sky, 1 );
 
 	for ( ; i < SKY_DATA_BUCKET_SIZE; ++i )
 	{
-		while ( device_sky->routes[i].pages != NULL )
+		while ( _device->routes[i].pages != NULL )
 		{
-			page = device_sky->routes[i].pages->next;
-			vfree( device_sky->routes[i].pages );
-			device_sky->routes[i].pages = page;
+			page = _device->routes[i].pages->next;
+			vfree( _device->routes[i].pages );
+			_device->routes[i].pages = page;
 		}
 	}
 
-	vfree( device_sky->routes );
-	device_destroy( device_sky->cls, MKDEV( device_sky->chrdev, 0 ) );
-	class_destroy( device_sky->cls );
-	unregister_chrdev( device_sky->chrdev, FILE_NAME_SKY );
+	vfree( _device->routes );
+	kfree( _device );
 
-	kfree( device_sky );
-
-	SKY_DBG( "sky unloaded\n" );
+	SKY_DBG( "xsky route unloaded\n" );
 }
 
 
-module_init( sky_init );
-module_exit( sky_exit );
+module_init( route_init );
+module_exit( route_exit );
 MODULE_LICENSE( "GPL" );

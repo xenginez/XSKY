@@ -2,13 +2,13 @@
 
 #include <QQueue>
 #include <QTimer>
+#include <QSettings>
 #include <QUdpSocket>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonDocument>
 
-#define ROUTE_HOST QHostAddress("3.3.3.3")
-#define ROUTE_PORT 3333
+#include "../common/common.h"
 
 struct Controller::Private
 {
@@ -19,14 +19,14 @@ struct Controller::Private
 	QStringList Protocols;
 
 	QUdpSocket ReadSocket, WriteSocket;
-	QQueue< std::function< void() > > Callbacks;
 };
 
 Controller::Controller()
 	:_p( new Private )
 {
-	_p->ReadSocket.bind( ROUTE_PORT );
+	ReadConfig( {} );
 
+	_p->ReadSocket.bind( CONFIG_PORT );
 	connect( &_p->ReadSocket, &QUdpSocket::readyRead, [this]()
 	{
 		auto sz = _p->ReadSocket.pendingDatagramSize();
@@ -34,14 +34,10 @@ Controller::Controller()
 		QByteArray buf( sz, 0 );
 		_p->ReadSocket.readDatagram( buf.data(), buf.size() );
 
-		QJsonDocument doc = QJsonDocument::fromJson( buf );
-		{
-
-		}
-
-		_p->Callbacks.front()( );
-		_p->Callbacks.pop_front();
+		ReadConfig( buf );
 	} );
+
+	_p->WriteSocket.writeDatagram( "{}", QHostAddress( ROUTE_ADDRESS ), CONFIG_PORT );
 }
 
 Controller::~Controller()
@@ -60,38 +56,28 @@ bool Controller::IsStartService() const
 	return _p->IsStart;
 }
 
-void Controller::StartService( const std::function<void( bool )> & callback )
+void Controller::StartService()
 {
 	if( _p->IsStart == false )
 	{
 		_p->IsStart = true;
 
-		WriteConfig();
-	}
+		_p->WriteSocket.writeDatagram( WriteConfig(), QHostAddress( ROUTE_ADDRESS ), CONFIG_PORT );
 
-	callback( true );
+		emit configChanged();
+	}
 }
 
-void Controller::StopService( const std::function<void( bool )> & callback )
+void Controller::StopService()
 {
 	if( _p->IsStart == true )
 	{
 		_p->IsStart = false;
 
-		WriteConfig();
+		_p->WriteSocket.writeDatagram( WriteConfig(), QHostAddress( ROUTE_ADDRESS ), CONFIG_PORT );
+
+		emit configChanged();
 	}
-
-	callback( true );
-}
-
-void Controller::GetConfig( const std::function<void( QString )> & callback )
-{
-	_p->WriteSocket.writeDatagram( "{}", ROUTE_HOST, ROUTE_PORT );
-}
-
-void Controller::SetConfig( const QString & config, const std::function<void( bool )> & callback )
-{
-	_p->WriteSocket.writeDatagram( config.toUtf8(), ROUTE_HOST, ROUTE_PORT );
 }
 
 const QString & Controller::GetServer() const
@@ -105,7 +91,9 @@ void Controller::SetServer( const QString & endpoint )
 	{
 		_p->Server = endpoint;
 
-		WriteConfig();
+		_p->WriteSocket.writeDatagram( WriteConfig(), QHostAddress( ROUTE_ADDRESS ), CONFIG_PORT );
+
+		emit configChanged();
 	}
 }
 
@@ -120,7 +108,9 @@ void Controller::SetDomainList( const QStringList & domains )
 	{
 		_p->Domains = domains;
 
-		WriteConfig();
+		_p->WriteSocket.writeDatagram( WriteConfig(), QHostAddress( ROUTE_ADDRESS ), CONFIG_PORT );
+
+		emit configChanged();
 	}
 }
 
@@ -135,16 +125,87 @@ void Controller::SetProtocolList( const QStringList & protocols )
 	{
 		_p->Protocols = protocols;
 
-		WriteConfig();
+		_p->WriteSocket.writeDatagram( WriteConfig(), QHostAddress( ROUTE_ADDRESS ), CONFIG_PORT );
+
+		emit configChanged();
 	}
 }
 
-void Controller::ReadConfig()
+void Controller::ReadConfig( const QByteArray & data )
 {
+	if( !data.isEmpty() )
+	{
+		auto obj = QJsonDocument::fromJson( data ).object();
+		_p->IsStart = obj["Start"].toBool();
+		_p->Server = obj["Server"].toString();
+		QJsonArray domains = obj["Domains"].toArray();
+		for( auto it : domains )
+		{
+			domains.push_back( it.toString() );
+		}
+		QJsonArray protocols = obj["Protocols"].toArray();
+		for( auto it : protocols )
+		{
+			domains.push_back( it.toString() );
+		}
+	}
+	else
+	{
+		int count = 0;
+		QSettings settings( "config.ini", QSettings::IniFormat );
+		settings.beginGroup( "Controller" );
+		{
+			_p->IsStart = settings.value( "Start", false ).toBool();
+			_p->Server = settings.value( "Server", "127.0.0.1:48888" ).toString();
+
+			count = settings.beginReadArray( "Domains" );
+			for( int i = 0; i < count; i++ )
+			{
+				settings.setArrayIndex( i );
+				_p->Domains.push_back( settings.value( "domain", "" ).toString() );
+			}
+			settings.endArray();
+
+			count = settings.beginReadArray( "Protocols" );
+			for( int i = 0; i < count; i++ )
+			{
+				settings.setArrayIndex( i );
+				_p->Protocols.push_back( settings.value( "protocol", "" ).toString() );
+			}
+			settings.endArray();
+		}
+		settings.endGroup();
+	}
+
+	emit configChanged();
 }
 
-void Controller::WriteConfig()
+QByteArray Controller::WriteConfig()
 {
+	QSettings settings( "config.ini", QSettings::IniFormat );
+	settings.beginGroup( "Controller" );
+	{
+		settings.setValue( "Start", _p->IsStart );
+		settings.setValue( "Server", _p->Server );
+
+		settings.beginWriteArray( "Domains" );
+		for( int i = 0; i < _p->Domains.size(); i++ )
+		{
+			settings.setArrayIndex( i );
+			settings.setValue( "domain", _p->Domains[i] );
+		}
+		settings.endArray();
+
+		settings.beginWriteArray( "Protocols" );
+		for( int i = 0; i < _p->Protocols.size(); i++ )
+		{
+			settings.setArrayIndex( i );
+			settings.setValue( "protocol", _p->Protocols[i] );
+		}
+		settings.endArray();
+	}
+	settings.endGroup();
+
 	QJsonObject obj;
 	obj.insert( "Start", _p->IsStart );
 	obj.insert( "Server", _p->Server );
@@ -161,5 +222,5 @@ void Controller::WriteConfig()
 	}
 	obj.insert( "Protocols", protocols );
 
-	_p->WriteSocket.writeDatagram( QJsonDocument( obj ).toJson(), ROUTE_HOST, ROUTE_PORT );
+	return  QJsonDocument( obj ).toJson();
 }

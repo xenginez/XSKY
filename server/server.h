@@ -35,9 +35,6 @@ typedef struct { int pte; }pte_t;
 #define _PAGE_RW 0
 #endif // __CMAKE_PROGRAM
 
-
-#define SKY_VERSION "1.0.0.0"
-
 #define SKY_DBG(msg...)	do { printk(KERN_DEBUG "[DEBUG] SKY: " msg); } while (0)
 
 #define CHECKSUM_HW 1

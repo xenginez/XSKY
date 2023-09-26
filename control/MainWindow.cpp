@@ -11,26 +11,27 @@
 #include "ServerListDialog.h"
 #include "DomainListDialog.h"
 
-MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent)
+MainWindow::MainWindow( QWidget * parent )
+    : QMainWindow( parent )
 {
     ui.setupUi(this);
 
-    QTimer::singleShot( 10, [this]()
-    {
-        WaitDialog * wait = new WaitDialog( this );
-        Controller::Instance()->GetConfig( [this, wait]( QString data )
-        {
-            ui.labelServer->setText( Controller::Instance()->GetServer() );
-            ui.labelStatus->setText( QString::fromLocal8Bit( Controller::Instance()->IsStartService() ? "已开启" : "已关闭" ) );
-            ui.labelConnect->setPixmap( QPixmap( Controller::Instance()->IsStartService() ? ":/icons/stop.png" : ":/icons/start.png" ) );
-
-            wait->deleteLater();
-        } );
-        wait->exec();
-    } );
+    ui.actionStart->setEnabled( !Controller::Instance()->IsStartService() );
+    ui.actionStop->setEnabled( Controller::Instance()->IsStartService() );
+    ui.labelServer->setText( Controller::Instance()->GetServer() );
+    ui.labelStatus->setText( QString::fromLocal8Bit( Controller::Instance()->IsStartService() ? "已开启" : "已关闭" ) );
+    ui.labelConnect->setPixmap( QPixmap( Controller::Instance()->IsStartService() ? ":/icons/stop.png" : ":/icons/start.png" ) );
 
     ui.labelConnect->installEventFilter( this );
+
+    connect( Controller::Instance(), &Controller::configChanged, [this]()
+    {
+        ui.actionStart->setEnabled( !Controller::Instance()->IsStartService() );
+        ui.actionStop->setEnabled( Controller::Instance()->IsStartService() );
+        ui.labelServer->setText( Controller::Instance()->GetServer() );
+        ui.labelStatus->setText( QString::fromLocal8Bit( Controller::Instance()->IsStartService() ? "已开启" : "已关闭" ) );
+        ui.labelConnect->setPixmap( QPixmap( Controller::Instance()->IsStartService() ? ":/icons/stop.png" : ":/icons/start.png" ) );
+    } );
 }
 
 MainWindow::~MainWindow()
@@ -39,24 +40,12 @@ MainWindow::~MainWindow()
 
 void MainWindow::on_actionStart_triggered( bool checked )
 {
-    Controller::Instance()->StartService( [this]( bool result )
-    {
-        ui.actionStart->setEnabled( !result );
-        ui.actionStop->setEnabled( result );
-        ui.labelConnect->setPixmap( QPixmap( ":/icons/stop.png" ) );
-        ui.labelStatus->setText( QString::fromLocal8Bit( "已开启" ) );
-    } );
+    Controller::Instance()->StartService();
 }
 
 void MainWindow::on_actionStop_triggered( bool checked )
 {
-    Controller::Instance()->StopService( [this]( bool result )
-    {
-        ui.actionStart->setEnabled( result );
-        ui.actionStop->setEnabled( !result );
-        ui.labelConnect->setPixmap( QPixmap( ":/icons/start.png" ) );
-        ui.labelStatus->setText( QString::fromLocal8Bit( "已关闭" ) );
-    } );
+    Controller::Instance()->StopService();
 }
 
 void MainWindow::on_actionExit_triggered( bool checked )

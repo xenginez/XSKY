@@ -20,17 +20,15 @@ private:
 public:
 	static Controller * Instance();
 
+signals:
+	void configChanged();
+
 public:
 	bool IsStartService() const;
 
-	void StartService( const std::function<void( bool )> & callback );
+	void StartService();
 
-	void StopService( const std::function<void( bool )> & callback );
-
-public:
-	void GetConfig( const std::function<void( QString )> & callback );
-
-	void SetConfig( const QString & config, const std::function<void( bool )> & callback );
+	void StopService();
 
 public:
 	const QString & GetServer() const;
@@ -46,9 +44,9 @@ public:
 	void SetProtocolList( const QStringList & protocols );
 
 private:
-	void ReadConfig();
+	void ReadConfig( const QByteArray & data );
 
-	void WriteConfig();
+	QByteArray WriteConfig();
 
 private:
 	Private * _p;

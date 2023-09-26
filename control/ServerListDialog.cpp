@@ -20,7 +20,7 @@ ServerListDialog::ServerListDialog( QWidget * parent )
 
 	auto select = Controller::Instance()->GetServer();
 
-	QSettings settings( QSettings::NativeFormat, QSettings::UserScope, "XSKY" );
+	QSettings settings( "config.ini", QSettings::IniFormat );
 	int count = settings.beginReadArray( "Servers" );
 	for( int i = 0; i < count; i++ )
 	{
@@ -57,7 +57,7 @@ ServerListDialog::~ServerListDialog()
 
 void ServerListDialog::on_pushButtonAccept_clicked()
 {
-	QSettings settings( QSettings::NativeFormat, QSettings::UserScope, "XSKY" );
+	QSettings settings( "config.ini", QSettings::IniFormat );
 	settings.beginWriteArray( "Servers" );
 	for( int i = 0; i < ui.treeWidget->topLevelItemCount(); i++ )
 	{

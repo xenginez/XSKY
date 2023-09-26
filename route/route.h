@@ -27,6 +27,8 @@
 #include <net/protocol.h>
 #include <linux/if_vlan.h>
 
+#include "../common/common.h"
+
 #ifdef __CMAKE_PROGRAM
 #define __exit
 #define module_exit( F )
@@ -35,8 +37,6 @@ typedef struct { int pte; }pte_t;
 #define _PAGE_RW 0
 #endif // __CMAKE_PROGRAM
 
-
-#define SKY_VERSION "1.0.0.0"
 
 #define SKY_DBG(msg...)	do { printk(KERN_DEBUG "[DEBUG] SKY: " msg); } while (0)
 
@@ -80,32 +80,29 @@ typedef union
 	struct sky_v6_data v6;
 }sky_data;
 
-struct sky_data_pair
+struct nat_data
 {
-	sky_data first;
-	sky_data second;
+	sky_data key;
+	sky_data value;
 };
 
-struct sky_data_page
+struct nat_data_page
 {
-	struct sky_data_page * next;
+	struct nat_data_page * next;
 
 	unsigned long long used;
-	struct sky_data_pair pairs[SKY_DATA_PAIR_SIZE];
+	struct nat_data pairs[SKY_DATA_PAIR_SIZE];
 };
 
-struct sky_data_bucket
+struct nat_data_bucket
 {
-	struct sky_data_page * pages;
+	struct nat_data_page * pages;
 };
 
-struct sky_device
+struct route_device
 {
-	int chrdev;
-	struct class * cls;
-	struct device * dev;
 	unsigned int servers;
-	struct sky_data_bucket * routes;
+	struct nat_data_bucket * routes;
 };
 
 #define NIPV4(addr) ((unsigned char *)&addr)[0], ((unsigned char *)&addr)[1], ((unsigned char *)&addr)[2], ((unsigned char *)&addr)[3]
