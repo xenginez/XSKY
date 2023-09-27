@@ -13,12 +13,12 @@
 struct Controller::Private
 {
 	bool IsStart = false;
-
 	QString Server = "127.0.0.1:48888";
 	QStringList Domains;
 	QStringList Protocols;
 
-	QUdpSocket ReadSocket, WriteSocket;
+	bool IsCapture = false;
+	QUdpSocket ReadSocket, WriteSocket, CaptureSocket;
 };
 
 Controller::Controller()
@@ -37,7 +37,19 @@ Controller::Controller()
 		ReadConfig( buf );
 	} );
 
+	_p->CaptureSocket.bind( CAPTURE_PORT );
+	connect( &_p->CaptureSocket, &QUdpSocket::readyRead, [this]()
+	{
+		auto sz = _p->CaptureSocket.pendingDatagramSize();
+
+		QByteArray item( sz, 0 );
+		_p->CaptureSocket.readDatagram( item.data(), item.size() );
+
+		emit captureItem( item );
+	} );
+
 	_p->WriteSocket.writeDatagram( "{}", QHostAddress( ROUTE_ADDRESS ), CONFIG_PORT );
+	_p->WriteSocket.writeDatagram( "{}", QHostAddress( ROUTE_ADDRESS ), CAPTURE_PORT );
 }
 
 Controller::~Controller()
@@ -77,6 +89,31 @@ void Controller::StopService()
 		_p->WriteSocket.writeDatagram( WriteConfig(), QHostAddress( ROUTE_ADDRESS ), CONFIG_PORT );
 
 		emit configChanged();
+	}
+}
+
+bool Controller::IsCapture() const
+{
+	return _p->IsCapture;
+}
+
+void Controller::StartCapture( const QString & setting )
+{
+	if( _p->IsCapture == false )
+	{
+		_p->IsCapture = true;
+
+		_p->WriteSocket.writeDatagram( setting.toUtf8(), QHostAddress( ROUTE_ADDRESS ), CAPTURE_PORT );
+	}
+}
+
+void Controller::StopCapture()
+{
+	if( _p->IsCapture == true )
+	{
+		_p->IsCapture = false;
+
+		_p->WriteSocket.writeDatagram( "{}", QHostAddress( ROUTE_ADDRESS ), CAPTURE_PORT );
 	}
 }
 

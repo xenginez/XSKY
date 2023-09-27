@@ -6,7 +6,7 @@
 #include <QJsonDocument>
 
 #include "Controller.h"
-#include "WaitDialog.h"
+#include "CaptureDialog.h"
 #include "ProtocolDialog.h"
 #include "ServerListDialog.h"
 #include "DomainListDialog.h"
@@ -46,6 +46,12 @@ void MainWindow::on_actionStart_triggered( bool checked )
 void MainWindow::on_actionStop_triggered( bool checked )
 {
     Controller::Instance()->StopService();
+}
+
+void MainWindow::on_actionCapture_triggered( bool checked )
+{
+    CaptureDialog dialog( this );
+    dialog.exec();
 }
 
 void MainWindow::on_actionExit_triggered( bool checked )

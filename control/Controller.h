@@ -23,12 +23,21 @@ public:
 signals:
 	void configChanged();
 
+	void captureItem( const QByteArray & item );
+
 public:
 	bool IsStartService() const;
 
 	void StartService();
 
 	void StopService();
+
+public:
+	bool IsCapture() const;
+
+	void StartCapture( const QString & setting );
+
+	void StopCapture();
 
 public:
 	const QString & GetServer() const;

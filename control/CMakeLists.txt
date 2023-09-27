@@ -19,18 +19,18 @@ set(PROJECT_SOURCES
     MainWindow.ui
     MainWindow.h
     MainWindow.cpp
-    WaitDialog.ui
-    WaitDialog.h
-    WaitDialog.cpp
+    CaptureDialog.ui
+    CaptureDialog.h
+    CaptureDialog.cpp
+    ProtocolDialog.ui
+    ProtocolDialog.h
+    ProtocolDialog.cpp
     DomainListDialog.ui
     DomainListDialog.h
     DomainListDialog.cpp
     ServerListDialog.ui
     ServerListDialog.h
     ServerListDialog.cpp
-    ProtocolDialog.ui
-    ProtocolDialog.h
-    ProtocolDialog.cpp
 )
 
 add_executable(control ${PROJECT_SOURCES})

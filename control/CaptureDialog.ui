@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>CaptureDialog</class>
+ <widget class="QDialog" name="CaptureDialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1081</width>
+    <height>939</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>CaptureDialog</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout_2">
+   <item>
+    <widget class="QSplitter" name="splitter_2">
+     <property name="orientation">
+      <enum>Qt::Horizontal</enum>
+     </property>
+     <widget class="QGroupBox" name="groupBox">
+      <property name="title">
+       <string>参数</string>
+      </property>
+      <layout class="QVBoxLayout" name="verticalLayout">
+       <item>
+        <layout class="QHBoxLayout" name="horizontalLayout_2">
+         <item>
+          <widget class="QLabel" name="label">
+           <property name="text">
+            <string>协议：</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QComboBox" name="comboBox">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <item>
+            <property name="text">
+             <string>DNS</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>mDNS</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>HTTP</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>HTTPS</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>TCP</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>UDP</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>ICMP</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>ARP</string>
+            </property>
+           </item>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <widget class="QStackedWidget" name="stackedWidget">
+         <widget class="QWidget" name="page_DNS"/>
+         <widget class="QWidget" name="page_mDNS"/>
+         <widget class="QWidget" name="page_HTTP"/>
+         <widget class="QWidget" name="page_HTTPS"/>
+         <widget class="QWidget" name="page_TCP"/>
+         <widget class="QWidget" name="page_UDP"/>
+         <widget class="QWidget" name="page_ICMP"/>
+         <widget class="QWidget" name="page_ARP"/>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QSplitter" name="splitter">
+      <property name="orientation">
+       <enum>Qt::Vertical</enum>
+      </property>
+      <widget class="QTableWidget" name="tableWidget">
+       <property name="contextMenuPolicy">
+        <enum>Qt::CustomContextMenu</enum>
+       </property>
+       <property name="editTriggers">
+        <set>QAbstractItemView::NoEditTriggers</set>
+       </property>
+       <property name="selectionBehavior">
+        <enum>QAbstractItemView::SelectRows</enum>
+       </property>
+       <property name="gridStyle">
+        <enum>Qt::NoPen</enum>
+       </property>
+       <column>
+        <property name="text">
+         <string>时间</string>
+        </property>
+       </column>
+       <column>
+        <property name="text">
+         <string>地址</string>
+        </property>
+       </column>
+       <column>
+        <property name="text">
+         <string>协议</string>
+        </property>
+       </column>
+       <column>
+        <property name="text">
+         <string>长度</string>
+        </property>
+       </column>
+       <column>
+        <property name="text">
+         <string>描述</string>
+        </property>
+       </column>
+      </widget>
+      <widget class="QTreeWidget" name="treeWidget">
+       <property name="contextMenuPolicy">
+        <enum>Qt::CustomContextMenu</enum>
+       </property>
+       <property name="editTriggers">
+        <set>QAbstractItemView::NoEditTriggers</set>
+       </property>
+       <attribute name="headerVisible">
+        <bool>false</bool>
+       </attribute>
+       <column>
+        <property name="text">
+         <string notr="true">1</string>
+        </property>
+       </column>
+      </widget>
+     </widget>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="horizontalLayout">
+     <item>
+      <spacer name="horizontalSpacer">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="pushButton">
+       <property name="text">
+        <string>开始捕获</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <layoutdefault spacing="6" margin="11"/>
+ <resources/>
+ <connections/>
+</ui>

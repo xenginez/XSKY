@@ -14,6 +14,7 @@ public:
 public slots:
     void on_actionStart_triggered( bool checked );
     void on_actionStop_triggered( bool checked );
+    void on_actionCapture_triggered( bool checked );
     void on_actionExit_triggered( bool checked );
     void on_actionProtocol_triggered( bool checked );
     void on_actionDomainList_triggered( bool checked );
