@@ -6,142 +6,76 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1081</width>
-    <height>939</height>
+    <width>841</width>
+    <height>583</height>
    </rect>
   </property>
   <property name="windowTitle">
-   <string>CaptureDialog</string>
+   <string>捕获</string>
   </property>
-  <layout class="QVBoxLayout" name="verticalLayout_2">
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <layout class="QHBoxLayout" name="horizontalLayout_2">
+     <item>
+      <widget class="QLabel" name="label">
+       <property name="text">
+        <string>参数：</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLineEdit" name="lineEdit"/>
+     </item>
+    </layout>
+   </item>
    <item>
     <widget class="QSplitter" name="splitter_2">
      <property name="orientation">
-      <enum>Qt::Horizontal</enum>
+      <enum>Qt::Vertical</enum>
      </property>
-     <widget class="QGroupBox" name="groupBox">
-      <property name="title">
-       <string>参数</string>
+     <widget class="QTableWidget" name="tableWidget">
+      <property name="contextMenuPolicy">
+       <enum>Qt::CustomContextMenu</enum>
       </property>
-      <layout class="QVBoxLayout" name="verticalLayout">
-       <item>
-        <layout class="QHBoxLayout" name="horizontalLayout_2">
-         <item>
-          <widget class="QLabel" name="label">
-           <property name="text">
-            <string>协议：</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QComboBox" name="comboBox">
-           <property name="sizePolicy">
-            <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
-             <horstretch>0</horstretch>
-             <verstretch>0</verstretch>
-            </sizepolicy>
-           </property>
-           <item>
-            <property name="text">
-             <string>DNS</string>
-            </property>
-           </item>
-           <item>
-            <property name="text">
-             <string>mDNS</string>
-            </property>
-           </item>
-           <item>
-            <property name="text">
-             <string>HTTP</string>
-            </property>
-           </item>
-           <item>
-            <property name="text">
-             <string>HTTPS</string>
-            </property>
-           </item>
-           <item>
-            <property name="text">
-             <string>TCP</string>
-            </property>
-           </item>
-           <item>
-            <property name="text">
-             <string>UDP</string>
-            </property>
-           </item>
-           <item>
-            <property name="text">
-             <string>ICMP</string>
-            </property>
-           </item>
-           <item>
-            <property name="text">
-             <string>ARP</string>
-            </property>
-           </item>
-          </widget>
-         </item>
-        </layout>
-       </item>
-       <item>
-        <widget class="QStackedWidget" name="stackedWidget">
-         <widget class="QWidget" name="page_DNS"/>
-         <widget class="QWidget" name="page_mDNS"/>
-         <widget class="QWidget" name="page_HTTP"/>
-         <widget class="QWidget" name="page_HTTPS"/>
-         <widget class="QWidget" name="page_TCP"/>
-         <widget class="QWidget" name="page_UDP"/>
-         <widget class="QWidget" name="page_ICMP"/>
-         <widget class="QWidget" name="page_ARP"/>
-        </widget>
-       </item>
-      </layout>
+      <property name="editTriggers">
+       <set>QAbstractItemView::NoEditTriggers</set>
+      </property>
+      <property name="selectionBehavior">
+       <enum>QAbstractItemView::SelectRows</enum>
+      </property>
+      <property name="gridStyle">
+       <enum>Qt::NoPen</enum>
+      </property>
+      <column>
+       <property name="text">
+        <string>时间</string>
+       </property>
+      </column>
+      <column>
+       <property name="text">
+        <string>地址</string>
+       </property>
+      </column>
+      <column>
+       <property name="text">
+        <string>协议</string>
+       </property>
+      </column>
+      <column>
+       <property name="text">
+        <string>长度</string>
+       </property>
+      </column>
+      <column>
+       <property name="text">
+        <string>描述</string>
+       </property>
+      </column>
      </widget>
      <widget class="QSplitter" name="splitter">
       <property name="orientation">
-       <enum>Qt::Vertical</enum>
+       <enum>Qt::Horizontal</enum>
       </property>
-      <widget class="QTableWidget" name="tableWidget">
-       <property name="contextMenuPolicy">
-        <enum>Qt::CustomContextMenu</enum>
-       </property>
-       <property name="editTriggers">
-        <set>QAbstractItemView::NoEditTriggers</set>
-       </property>
-       <property name="selectionBehavior">
-        <enum>QAbstractItemView::SelectRows</enum>
-       </property>
-       <property name="gridStyle">
-        <enum>Qt::NoPen</enum>
-       </property>
-       <column>
-        <property name="text">
-         <string>时间</string>
-        </property>
-       </column>
-       <column>
-        <property name="text">
-         <string>地址</string>
-        </property>
-       </column>
-       <column>
-        <property name="text">
-         <string>协议</string>
-        </property>
-       </column>
-       <column>
-        <property name="text">
-         <string>长度</string>
-        </property>
-       </column>
-       <column>
-        <property name="text">
-         <string>描述</string>
-        </property>
-       </column>
-      </widget>
       <widget class="QTreeWidget" name="treeWidget">
        <property name="contextMenuPolicy">
         <enum>Qt::CustomContextMenu</enum>
@@ -158,6 +92,7 @@
         </property>
        </column>
       </widget>
+      <widget class="QWidget" name="HexWidget" native="true"/>
      </widget>
     </widget>
    </item>
@@ -167,6 +102,12 @@
       <spacer name="horizontalSpacer">
        <property name="orientation">
         <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>0</width>
+         <height>0</height>
+        </size>
        </property>
       </spacer>
      </item>
