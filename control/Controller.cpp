@@ -48,8 +48,8 @@ Controller::Controller()
 		emit captureItem( item );
 	} );
 
-	_p->WriteSocket.writeDatagram( "{}", QHostAddress( ROUTE_ADDRESS ), CONFIG_PORT );
-	_p->WriteSocket.writeDatagram( "{}", QHostAddress( ROUTE_ADDRESS ), CAPTURE_PORT );
+	_p->WriteSocket.writeDatagram( "{}", QHostAddress( ROUTE_ADDRESS_STR ), CONFIG_PORT );
+	_p->WriteSocket.writeDatagram( "{}", QHostAddress( ROUTE_ADDRESS_STR ), CAPTURE_PORT );
 }
 
 Controller::~Controller()
@@ -74,7 +74,7 @@ void Controller::StartService()
 	{
 		_p->IsStart = true;
 
-		_p->WriteSocket.writeDatagram( WriteConfig(), QHostAddress( ROUTE_ADDRESS ), CONFIG_PORT );
+		_p->WriteSocket.writeDatagram( WriteConfig(), QHostAddress( ROUTE_ADDRESS_STR ), CONFIG_PORT );
 
 		emit configChanged();
 	}
@@ -86,7 +86,7 @@ void Controller::StopService()
 	{
 		_p->IsStart = false;
 
-		_p->WriteSocket.writeDatagram( WriteConfig(), QHostAddress( ROUTE_ADDRESS ), CONFIG_PORT );
+		_p->WriteSocket.writeDatagram( WriteConfig(), QHostAddress( ROUTE_ADDRESS_STR ), CONFIG_PORT );
 
 		emit configChanged();
 	}
@@ -103,7 +103,7 @@ void Controller::StartCapture( const QString & setting )
 	{
 		_p->IsCapture = true;
 
-		_p->WriteSocket.writeDatagram( setting.toUtf8(), QHostAddress( ROUTE_ADDRESS ), CAPTURE_PORT );
+		_p->WriteSocket.writeDatagram( setting.toUtf8(), QHostAddress( ROUTE_ADDRESS_STR ), CAPTURE_PORT );
 	}
 }
 
@@ -113,7 +113,7 @@ void Controller::StopCapture()
 	{
 		_p->IsCapture = false;
 
-		_p->WriteSocket.writeDatagram( "{}", QHostAddress( ROUTE_ADDRESS ), CAPTURE_PORT );
+		_p->WriteSocket.writeDatagram( "{}", QHostAddress( ROUTE_ADDRESS_STR ), CAPTURE_PORT );
 	}
 }
 
@@ -128,7 +128,7 @@ void Controller::SetServer( const QString & endpoint )
 	{
 		_p->Server = endpoint;
 
-		_p->WriteSocket.writeDatagram( WriteConfig(), QHostAddress( ROUTE_ADDRESS ), CONFIG_PORT );
+		_p->WriteSocket.writeDatagram( WriteConfig(), QHostAddress( ROUTE_ADDRESS_STR ), CONFIG_PORT );
 
 		emit configChanged();
 	}
@@ -145,7 +145,7 @@ void Controller::SetDomainList( const QStringList & domains )
 	{
 		_p->Domains = domains;
 
-		_p->WriteSocket.writeDatagram( WriteConfig(), QHostAddress( ROUTE_ADDRESS ), CONFIG_PORT );
+		_p->WriteSocket.writeDatagram( WriteConfig(), QHostAddress( ROUTE_ADDRESS_STR ), CONFIG_PORT );
 
 		emit configChanged();
 	}
@@ -162,7 +162,7 @@ void Controller::SetProtocolList( const QStringList & protocols )
 	{
 		_p->Protocols = protocols;
 
-		_p->WriteSocket.writeDatagram( WriteConfig(), QHostAddress( ROUTE_ADDRESS ), CONFIG_PORT );
+		_p->WriteSocket.writeDatagram( WriteConfig(), QHostAddress( ROUTE_ADDRESS_STR ), CONFIG_PORT );
 
 		emit configChanged();
 	}

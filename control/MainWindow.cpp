@@ -51,6 +51,7 @@ void MainWindow::on_actionStop_triggered( bool checked )
 void MainWindow::on_actionCapture_triggered( bool checked )
 {
     CaptureDialog dialog( this );
+    dialog.setWindowState( Qt::WindowMaximized );
     dialog.exec();
 }
 

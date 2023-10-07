@@ -16,6 +16,8 @@ public slots:
 
 	void on_tableWidget_cellClicked( int row, int column );
 
+	void on_treeWidget_itemClicked( QTreeWidgetItem * item, int column );
+
 public:
 	void closeEvent( QCloseEvent * e ) override;
 

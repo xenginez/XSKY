@@ -9,8 +9,8 @@ namespace
 {
 	QStringList ComboItemList =
 	{
-		QString::fromLocal8Bit( "代理" ),
 		QString::fromLocal8Bit( "放行" ),
+		QString::fromLocal8Bit( "代理" ),
 		QString::fromLocal8Bit( "屏蔽" ),
 	};
 }

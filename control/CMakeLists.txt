@@ -12,8 +12,22 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
 set(PROJECT_SOURCES
+    app_ico.rc
     icon.qrc
     main.cpp
+    QHexView/document/buffer/qfilebuffer.cpp
+    QHexView/document/buffer/qhexbuffer.cpp
+    QHexView/document/buffer/qmemorybuffer.cpp
+    QHexView/document/buffer/qmemoryrefbuffer.cpp
+    QHexView/document/commands/hexcommand.cpp
+    QHexView/document/commands/insertcommand.cpp
+    QHexView/document/commands/removecommand.cpp
+    QHexView/document/commands/replacecommand.cpp
+    QHexView/document/qhexcursor.cpp
+    QHexView/document/qhexdocument.cpp
+    QHexView/document/qhexmetadata.cpp
+    QHexView/document/qhexrenderer.cpp
+    QHexView/qhexview.cpp
     Controller.h
     Controller.cpp
     MainWindow.ui

@@ -16,6 +16,12 @@
 
 #define IP_VERSION_4 0x0100
 #define IP_VERSION_6 0x0110
+#define IP_PROTO_TCP 6
+#define IP_PROTO_UDP 17
+#define IP_PROTO_ICMP 1
+#define IPV6_NEXTHDR_TCP 6
+#define IPV6_NEXTHDR_UDP 17
+#define IPV6_NEXTHDR_ICMP 58
 
 #define ARP_HARDWARE_NETROM 0  /* from KA9Q: NET/ROM pseudo */
 #define ARP_HARDWARE_ETHER  1  /* Ethernet 10Mbps  */
@@ -93,11 +99,11 @@
 #define ARP_OPCODE_InREPLY 9  /* InARP reply   */
 #define ARP_OPCODE_NAK 10  /* (ATM)ARP NAK   */
 
-#define ICMP_TYPE_ECHOREPLY 0    /* Echo Reply            */
+#define ICMP_TYPE_ECHO_REPLY 0    /* Echo Reply            */
 #define ICMP_TYPE_DEST_UNREACH 3    /* Destination Unreachable    */
 #define ICMP_TYPE_SOURCE_QUENCH 4    /* Source Quench        */
 #define ICMP_TYPE_REDIRECT 5    /* Redirect (change route)    */
-#define ICMP_TYPE_ECHO 8    /* Echo Request            */
+#define ICMP_TYPE_ECHO_REQUEST 8    /* Echo Request            */
 #define ICMP_TYPE_TIME_EXCEEDED 11    /* Time Exceeded        */
 #define ICMP_TYPE_PARAMETERPROB 12    /* Parameter Problem        */
 #define ICMP_TYPE_TIMESTAMP 13    /* Timestamp Request        */
@@ -107,54 +113,78 @@
 #define ICMP_TYPE_ADDRESS 17    /* Address Mask Request        */
 #define ICMP_TYPE_ADDRESSREPLY 18    /* Address Mask Reply        */
 
-#define ICMP_CODE_NET_UNREACH 0    /* Network Unreachable        */
-#define ICMP_CODE_HOST_UNREACH 1    /* Host Unreachable        */
-#define ICMP_CODE_PROT_UNREACH 2    /* Protocol Unreachable        */
-#define ICMP_CODE_PORT_UNREACH 3    /* Port Unreachable        */
-#define ICMP_CODE_FRAG_NEEDED 4    /* Fragmentation Needed/DF set    */
-#define ICMP_CODE_SR_FAILED 5    /* Source Route failed        */
-#define ICMP_CODE_NET_UNKNOWN 6
-#define ICMP_CODE_HOST_UNKNOWN 7
-#define ICMP_CODE_HOST_ISOLATED 8
-#define ICMP_CODE_NET_ANO 9
-#define ICMP_CODE_HOST_ANO 10
-#define ICMP_CODE_NET_UNR_TOS 11
-#define ICMP_CODE_HOST_UNR_TOS 12
-#define ICMP_CODE_PKT_FILTERED 13    /* Packet filtered */
-#define ICMP_CODE_PREC_VIOLATION 14    /* Precedence violation */
-#define ICMP_CODE_PREC_CUTOFF 15    /* Precedence cut off */
+#define ICMPV6_TYPE_DEST_UNREACH 1
+#define ICMPV6_TYPE_PKT_TOOBIG 2
+#define ICMPV6_TYPE_TIME_EXCEED 3
+#define ICMPV6_TYPE_PARAMPROB 4
+#define ICMPV6_TYPE_ERRMSG_MAX 127
+#define ICMPV6_TYPE_ECHO_REQUEST 128
+#define ICMPV6_TYPE_ECHO_REPLY 129
+#define ICMPV6_TYPE_MGM_QUERY 130
+#define ICMPV6_TYPE_MGM_REPORT 131
+#define ICMPV6_TYPE_MGM_REDUCTION 132
+#define ICMPV6_TYPE_NI_QUERY 139
+#define ICMPV6_TYPE_NI_REPLY 140
+#define ICMPV6_TYPE_MLD2_REPORT 143
+#define ICMPV6_TYPE_DHAAD_REQUEST 144
+#define ICMPV6_TYPE_DHAAD_REPLY 145
+#define ICMPV6_TYPE_MOBILE_PREFIX_SOL 146
+#define ICMPV6_TYPE_MOBILE_PREFIX_ADV 147
+#define ICMPV6_TYPE_MRDISC_ADV 151
+#define ICMPV6_TYPE_MSG_MAX 255
 
 #define DNS_TYPE_A 1
 #define DNS_TYPE_AAAA 28
 #define DNS_CLASS_IN 1
+#define DNS_FIXED_PORT 53
 
-union ipv6_addr
+#define HTTP_FIXED_PORT 80
+#define HTTPS_FIXED_PORT 443
+
+typedef unsigned int ipv4_addr;
+
+typedef union _ipv6_addr
 {
     unsigned char addr8[16];
     unsigned short addr16[8];
     unsigned int addr32[4];
-};
+}ipv6_addr;
 
-struct protocol_eth
+typedef struct _endpoint
 {
- unsigned char dst[ETH_ALEN];
- unsigned char src[ETH_ALEN];
- unsigned short type;
-};
+    unsigned short port;
+    union
+    {
+        ipv4_addr v4;
+        ipv6_addr v6;
+    }addr;
+} endpoint;
 
-struct protocol_arp
+typedef struct _mac_addr
+{
+    unsigned char mac[ETH_ALEN];
+} mac_addr;
+
+typedef struct _protocol_eth
+{
+    mac_addr dst;
+    mac_addr src;
+    unsigned short type;
+} protocol_eth;
+
+typedef struct _protocol_arp
 {
     unsigned short int hardware;
     unsigned short int protocol;
     unsigned char hardware_len;
     unsigned char protocol_len;
     unsigned short int opcode;
-};
+} protocol_arp;
 
-struct protocol_ipv4
+typedef struct _protocol_ipv4
 {
- unsigned int ihl : 4;
- unsigned int version : 4;
+    unsigned int ihl : 4;
+    unsigned int version : 4;
     unsigned char tos;
     unsigned short tot_len;
     unsigned short id;
@@ -164,9 +194,9 @@ struct protocol_ipv4
     unsigned short check;
     unsigned int saddr;
     unsigned int daddr;
-};
+} protocol_ipv4;
 
-struct protocol_ipv6
+typedef struct _protocol_ipv6
 {
     unsigned int version : 4;
     unsigned int priority : 8;
@@ -176,9 +206,9 @@ struct protocol_ipv6
     unsigned char hop_limit;
     ipv6_addr saddr;
     ipv6_addr daddr;
-};
+} protocol_ipv6;
 
-struct protocol_icmp
+typedef struct _protocol_icmpv4
 {
     unsigned char type;
     unsigned char code;
@@ -197,9 +227,48 @@ struct protocol_icmp
             unsigned short mtu;
         } frag;
     } un;
-};
+} protocol_icmpv4;
 
-struct protocol_tcp
+typedef struct _protocol_icmpv6
+{
+    unsigned char type;
+    unsigned char code;
+    unsigned short cksum;
+    union
+    {
+        unsigned int un_data32[1];
+        unsigned short un_data16[2];
+        unsigned char un_data8[4];
+
+        struct icmpv6_echo
+        {
+            unsigned short identifier;
+            unsigned short sequence;
+        } u_echo;
+
+        struct icmpv6_nd_advt
+        {
+            unsigned int reserved : 5;
+            unsigned int override :1;
+            unsigned int solicited : 1;
+            unsigned int router : 1;
+            unsigned int reserved2 : 24;
+        } u_nd_advt;
+
+        struct icmpv6_nd_ra
+        {
+            unsigned char hop_limit;
+            unsigned char reserved : 3;
+            unsigned char router_pref : 2;
+            unsigned char home_agent : 1;
+            unsigned char other : 1;
+            unsigned char managed : 1;
+            unsigned short rt_lifetime;
+        } u_nd_ra;
+    } dataun;
+} protocol_icmpv6;
+
+typedef struct _protocol_tcp
 {
     unsigned short source;
     unsigned short dest;
@@ -217,17 +286,17 @@ struct protocol_tcp
     unsigned short window;
     unsigned short check;
     unsigned short urg_ptr;
-};
+} protocol_tcp;
 
-struct protocol_udp
+typedef struct _protocol_udp
 {
     unsigned short source;
     unsigned short dest;
     unsigned short len;
     unsigned short check;
-};
+} protocol_udp;
 
-struct protocol_dns
+typedef struct _protocol_dns
 {
     unsigned short tid;
     unsigned short flags;
@@ -235,6 +304,6 @@ struct protocol_dns
     unsigned short ancount;
     unsigned short nscount;
     unsigned short arcount;
-};
+} protocol_dns;
 
 #endif//PROTOCOL_H__869E7B00_67AB_446B_B145_B196865FAA26
