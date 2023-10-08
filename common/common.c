@@ -1,4 +1,4 @@
-#include "hash_map.h"
+#include "common.h"
 
 #define NAT_DATA_PAIR_SIZE 100
 #define NAT_DATA_BUCKET_SIZE 100
@@ -24,13 +24,13 @@ struct hash_map
 
 unsigned int hash( void * key, int key_len )
 {
-	int _Idx = 0;
+	int i = 0;
 	unsigned int _Val = 2166136261U;
 	unsigned char * _First = (unsigned char *) key;
 
-	for( ; _Idx < key_len; ++_Idx )
+	for( i = 0; i < key_len; ++i )
 	{
-		_Val ^= (unsigned int) ( _First[_Idx] );
+		_Val ^= (unsigned int) ( _First[i] );
 		_Val *= 16777619U;
 	}
 
@@ -38,13 +38,14 @@ unsigned int hash( void * key, int key_len )
 }
 
 
-struct hash_map * create_hash_map()
+struct hash_map * create_hash_map( void )
 {
 	return (struct hash_map *)vzalloc( sizeof( struct hash_map ) );
 }
 
 void insert_hash_map( struct hash_map * map, void * key, int key_len, void * value )
 {
+	int i = 0;
 	unsigned int h = hash( key, key_len );
 
 	nat_page * page = map->pages + ( h % NAT_DATA_BUCKET_SIZE );
@@ -58,7 +59,7 @@ void insert_hash_map( struct hash_map * map, void * key, int key_len, void * val
 		page = page->next;
 	}
 
-	for( int i = 0; i < NAT_DATA_PAIR_SIZE; ++i )
+	for( i = 0; i < NAT_DATA_PAIR_SIZE; ++i )
 	{
 		if( page->pairs[i].key == 0 )
 		{
@@ -71,14 +72,15 @@ void insert_hash_map( struct hash_map * map, void * key, int key_len, void * val
 	}
 }
 
-void * find_hash_map( struct hash_map * map, void * key, int key_len, )
+void * find_hash_map( struct hash_map * map, void * key, int key_len )
 {
+	int i = 0;
 	unsigned int h = hash( key, key_len );
 
 	nat_page * page = map->pages + ( h % NAT_DATA_BUCKET_SIZE );
 	while( page != 0 )
 	{
-		for( int i = 0; i < NAT_DATA_PAIR_SIZE; ++i )
+		for( i = 0; i < NAT_DATA_PAIR_SIZE; ++i )
 		{
 			if( page->pairs[i].key == h )
 			{
@@ -97,14 +99,15 @@ void * find_hash_map( struct hash_map * map, void * key, int key_len, )
 	return 0;
 }
 
-void * remove_hash_map( struct hash_map * map, void * key, int key_len, )
+void * remove_hash_map( struct hash_map * map, void * key, int key_len )
 {
+	int i = 0;
 	unsigned int h = hash( key, key_len );
 
 	nat_page * page = map->pages + ( h % NAT_DATA_BUCKET_SIZE );
 	while( page != 0 )
 	{
-		for( int i = 0; i < NAT_DATA_PAIR_SIZE; ++i )
+		for( i = 0; i < NAT_DATA_PAIR_SIZE; ++i )
 		{
 			if( page->pairs[i].key == h )
 			{
@@ -129,11 +132,11 @@ void * remove_hash_map( struct hash_map * map, void * key, int key_len, )
 	return 0;
 }
 
-void release_hash_map( struct hash_map * map )
+void free_hash_map( struct hash_map * map )
 {
 	int i = 0;
 	nat_page * page = 0, * tpage = 0;
-	for( ; i < NAT_DATA_BUCKET_SIZE; ++i )
+	for( i = 0; i < NAT_DATA_BUCKET_SIZE; ++i )
 	{
 		if( map->pages[i].next != 0 )
 		{

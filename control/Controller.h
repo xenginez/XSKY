@@ -4,6 +4,7 @@
 #include <functional>
 
 #include <QObject>
+#include <QHostInfo>
 
 class Controller : public QObject
 {
@@ -56,6 +57,9 @@ private:
 	void ReadConfig( const QByteArray & data );
 
 	QByteArray WriteConfig();
+
+private slots:
+	void OnLookupHost( const QHostInfo & host );
 
 private:
 	Private * _p;

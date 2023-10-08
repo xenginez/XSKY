@@ -18,6 +18,7 @@ struct Controller::Private
 	QStringList Protocols;
 
 	bool IsCapture = false;
+	QHostAddress RouteAddress;
 	QUdpSocket ReadSocket, WriteSocket, CaptureSocket;
 };
 
@@ -26,7 +27,7 @@ Controller::Controller()
 {
 	ReadConfig( {} );
 
-	_p->ReadSocket.bind( CONFIG_PORT );
+	_p->ReadSocket.bind( ROUTE_CONFIG_PORT );
 	connect( &_p->ReadSocket, &QUdpSocket::readyRead, [this]()
 	{
 		auto sz = _p->ReadSocket.pendingDatagramSize();
@@ -37,7 +38,7 @@ Controller::Controller()
 		ReadConfig( buf );
 	} );
 
-	_p->CaptureSocket.bind( CAPTURE_PORT );
+	_p->CaptureSocket.bind( ROUTE_CAPTURE_PORT );
 	connect( &_p->CaptureSocket, &QUdpSocket::readyRead, [this]()
 	{
 		auto sz = _p->CaptureSocket.pendingDatagramSize();
@@ -48,8 +49,7 @@ Controller::Controller()
 		emit captureItem( item );
 	} );
 
-	_p->WriteSocket.writeDatagram( "{}", QHostAddress( ROUTE_ADDRESS_STR ), CONFIG_PORT );
-	_p->WriteSocket.writeDatagram( "{}", QHostAddress( ROUTE_ADDRESS_STR ), CAPTURE_PORT );
+	QHostInfo::lookupHost( ROUTE_URL, this, SLOT( OnLookupHost( const QHostInfo & host ) ) );
 }
 
 Controller::~Controller()
@@ -74,7 +74,7 @@ void Controller::StartService()
 	{
 		_p->IsStart = true;
 
-		_p->WriteSocket.writeDatagram( WriteConfig(), QHostAddress( ROUTE_ADDRESS_STR ), CONFIG_PORT );
+		_p->WriteSocket.writeDatagram( WriteConfig(), _p->RouteAddress, ROUTE_CONFIG_PORT );
 
 		emit configChanged();
 	}
@@ -86,7 +86,7 @@ void Controller::StopService()
 	{
 		_p->IsStart = false;
 
-		_p->WriteSocket.writeDatagram( WriteConfig(), QHostAddress( ROUTE_ADDRESS_STR ), CONFIG_PORT );
+		_p->WriteSocket.writeDatagram( WriteConfig(), _p->RouteAddress, ROUTE_CONFIG_PORT );
 
 		emit configChanged();
 	}
@@ -103,7 +103,7 @@ void Controller::StartCapture( const QString & setting )
 	{
 		_p->IsCapture = true;
 
-		_p->WriteSocket.writeDatagram( setting.toUtf8(), QHostAddress( ROUTE_ADDRESS_STR ), CAPTURE_PORT );
+		_p->WriteSocket.writeDatagram( setting.toUtf8(), _p->RouteAddress, ROUTE_CAPTURE_PORT );
 	}
 }
 
@@ -113,7 +113,7 @@ void Controller::StopCapture()
 	{
 		_p->IsCapture = false;
 
-		_p->WriteSocket.writeDatagram( "{}", QHostAddress( ROUTE_ADDRESS_STR ), CAPTURE_PORT );
+		_p->WriteSocket.writeDatagram( "{}", _p->RouteAddress, ROUTE_CAPTURE_PORT );
 	}
 }
 
@@ -128,7 +128,7 @@ void Controller::SetServer( const QString & endpoint )
 	{
 		_p->Server = endpoint;
 
-		_p->WriteSocket.writeDatagram( WriteConfig(), QHostAddress( ROUTE_ADDRESS_STR ), CONFIG_PORT );
+		_p->WriteSocket.writeDatagram( WriteConfig(), _p->RouteAddress, ROUTE_CONFIG_PORT );
 
 		emit configChanged();
 	}
@@ -145,7 +145,7 @@ void Controller::SetDomainList( const QStringList & domains )
 	{
 		_p->Domains = domains;
 
-		_p->WriteSocket.writeDatagram( WriteConfig(), QHostAddress( ROUTE_ADDRESS_STR ), CONFIG_PORT );
+		_p->WriteSocket.writeDatagram( WriteConfig(), _p->RouteAddress, ROUTE_CONFIG_PORT );
 
 		emit configChanged();
 	}
@@ -162,7 +162,7 @@ void Controller::SetProtocolList( const QStringList & protocols )
 	{
 		_p->Protocols = protocols;
 
-		_p->WriteSocket.writeDatagram( WriteConfig(), QHostAddress( ROUTE_ADDRESS_STR ), CONFIG_PORT );
+		_p->WriteSocket.writeDatagram( WriteConfig(), _p->RouteAddress, ROUTE_CONFIG_PORT );
 
 		emit configChanged();
 	}
@@ -260,4 +260,18 @@ QByteArray Controller::WriteConfig()
 	obj.insert( "Protocols", protocols );
 
 	return  QJsonDocument( obj ).toJson();
+}
+
+void Controller::OnLookupHost( const QHostInfo & host )
+{
+	if( host.error() == QHostInfo::NoError )
+	{
+		for( auto address : host.addresses() )
+		{
+			_p->RouteAddress = address;
+		}
+
+		_p->WriteSocket.writeDatagram( "{}", _p->RouteAddress, ROUTE_CONFIG_PORT );
+		_p->WriteSocket.writeDatagram( "{}", _p->RouteAddress, ROUTE_CAPTURE_PORT );
+	}
 }

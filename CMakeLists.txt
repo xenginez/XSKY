@@ -8,4 +8,9 @@ add_subdirectory("server")
 else()
 add_subdirectory("control")
 add_subdirectory("tests")
+
+if(LINUX_KNL)
+add_subdirectory("route")
+endif()
+
 endif()
