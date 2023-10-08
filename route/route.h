@@ -29,7 +29,7 @@
 #include <linux/if_vlan.h>
 
 #include "../common/common.h"
-#include "../common/nat_map.h"
+#include "../common/hash_map.h"
 #include "../common/protocol.h"
 
 #define SKY_DBG(msg...)	do { printk(KERN_DEBUG "[DEBUG] SKY: " msg); } while (0)
@@ -85,7 +85,7 @@ struct route_device
 	flags flag;
 	endpoint server;
 	capture_info capture;
-	struct nat_map * routes;
+	struct hash_map * routes;
 };
 
 #define NIPV4(addr) ((unsigned char *)&addr)[0], ((unsigned char *)&addr)[1], ((unsigned char *)&addr)[2], ((unsigned char *)&addr)[3]

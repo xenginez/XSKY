@@ -1,4 +1,4 @@
-#include "nat_map.h"
+#include "hash_map.h"
 
 #define NAT_DATA_PAIR_SIZE 100
 #define NAT_DATA_BUCKET_SIZE 100
@@ -17,7 +17,7 @@ typedef struct _nat_page
 	nat_pair pairs[NAT_DATA_PAIR_SIZE];
 } nat_page;
 
-struct nat_map
+struct hash_map
 {
 	nat_page pages[NAT_DATA_BUCKET_SIZE];
 };
@@ -38,12 +38,12 @@ unsigned int hash( void * key, int key_len )
 }
 
 
-struct nat_map * create_nat_map()
+struct hash_map * create_hash_map()
 {
-	return (struct nat_map *)vzalloc( sizeof( struct nat_map ) );
+	return (struct hash_map *)vzalloc( sizeof( struct hash_map ) );
 }
 
-void insert_nat_map( struct nat_map * map, void * key, int key_len, void * value )
+void insert_hash_map( struct hash_map * map, void * key, int key_len, void * value )
 {
 	unsigned int h = hash( key, key_len );
 
@@ -71,7 +71,7 @@ void insert_nat_map( struct nat_map * map, void * key, int key_len, void * value
 	}
 }
 
-void * find_nat_map( struct nat_map * map, void * key, int key_len, )
+void * find_hash_map( struct hash_map * map, void * key, int key_len, )
 {
 	unsigned int h = hash( key, key_len );
 
@@ -97,7 +97,7 @@ void * find_nat_map( struct nat_map * map, void * key, int key_len, )
 	return 0;
 }
 
-void * remove_nat_map( struct nat_map * map, void * key, int key_len, )
+void * remove_hash_map( struct hash_map * map, void * key, int key_len, )
 {
 	unsigned int h = hash( key, key_len );
 
@@ -129,7 +129,7 @@ void * remove_nat_map( struct nat_map * map, void * key, int key_len, )
 	return 0;
 }
 
-void release_nat_map( struct nat_map * map )
+void release_hash_map( struct hash_map * map )
 {
 	int i = 0;
 	nat_page * page = 0, * tpage = 0;

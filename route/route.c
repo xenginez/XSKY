@@ -164,7 +164,7 @@ static struct nf_hook_ops route_nf_hook_ops[] =
 static int __init route_init( void )
 {
 	_device = vzalloc( sizeof( struct route_device ) );
-	_device->routes = create_nat_map();
+	_device->routes = create_hash_map();
 	nf_register_net_hooks( &init_net, route_nf_hook_ops, 2 );
 
 	SKY_DBG( "xsky route loaded\n" );
@@ -175,7 +175,7 @@ static int __init route_init( void )
 static void __exit route_exit( void )
 {
 	nf_unregister_net_hooks( &init_net, route_nf_hook_ops, 2 );
-	release_nat_map( _device->routes );
+	release_hash_map( _device->routes );
 	vzfree( _device );
 
 	SKY_DBG( "xsky route unloaded\n" );
