@@ -3,7 +3,7 @@
 #include <QDateTime>
 
 #include "Controller.h"
-#include "../common/protocol.h"
+#include "../common/common.h"
 #include "QHexView/document/qhexcursor.h"
 #include "QHexView/document/buffer/qmemorybuffer.h"
 
@@ -52,11 +52,15 @@ void CaptureDialog::on_pushButton_clicked()
 {
 	if( Controller::Instance()->IsCapture() )
 	{
+		ui.lineEdit->setEnabled( true );
+		ui.toolButton->setEnabled( true );
 		Controller::Instance()->StopCapture();
 		ui.pushButton->setText( QString::fromLocal8Bit( "开始捕获" ) );
 	}
 	else
 	{
+		ui.lineEdit->setEnabled( false );
+		ui.toolButton->setEnabled( false );
 		Controller::Instance()->StartCapture( ui.lineEdit->text() );
 		ui.pushButton->setText( QString::fromLocal8Bit( "停止捕获" ) );
 	}

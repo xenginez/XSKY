@@ -10,6 +10,7 @@
 #include "ProtocolDialog.h"
 #include "ServerListDialog.h"
 #include "DomainListDialog.h"
+#include "DeviceListDialog.h"
 
 MainWindow::MainWindow( QWidget * parent )
     : QMainWindow( parent )
@@ -66,15 +67,21 @@ void MainWindow::on_actionProtocol_triggered( bool checked )
     dialog.exec();
 }
 
+void MainWindow::on_actionServerList_triggered( bool checked )
+{
+    ServerListDialog dialog( this );
+    dialog.exec();
+}
+
 void MainWindow::on_actionDomainList_triggered( bool checked )
 {
     DomainListDialog dialog( this );
     dialog.exec();
 }
 
-void MainWindow::on_actionServerList_triggered( bool checked )
+void MainWindow::on_actionDeviceList_triggered( bool checked )
 {
-    ServerListDialog dialog( this );
+    DeviceListDialog dialog( this );
     dialog.exec();
 }
 

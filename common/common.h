@@ -146,6 +146,11 @@ static const unsigned short ROUTE_CAPTURE_PORT = 0xBABA;
 #define HTTP_FIXED_PORT 80
 #define HTTPS_FIXED_PORT 443
 
+#define LIMIT_TYPE_DISCHARGE 0
+#define LIMIT_TYPE_PROXY 1
+#define LIMIT_TYPE_MASK 2
+
+
 typedef unsigned int ipv4_addr;
 
 typedef union _ipv6_addr
@@ -153,7 +158,7 @@ typedef union _ipv6_addr
     unsigned char addr8[16];
     unsigned short addr16[8];
     unsigned int addr32[4];
-}ipv6_addr;
+} ipv6_addr;
 
 typedef struct _endpoint
 {
@@ -312,18 +317,20 @@ typedef struct _protocol_dns
 } protocol_dns;
 
 
-struct hash_map;
+typedef struct _hash_map * hash_map;
 
-struct hash_map * create_hash_map( void );
+typedef struct _mac_info
+{
+    unsigned char type;
+    mac_addr mac;
+} mac_info;
 
-void insert_hash_map( struct hash_map * map, void * key, int key_len, void * value );
-
-void * find_hash_map( struct hash_map * map, void * key, int key_len );
-
-void * remove_hash_map( struct hash_map * map, void * key, int key_len );
-
-void free_hash_map( struct hash_map * map );
-
+typedef struct _domain_info
+{
+    unsigned char type;
+    unsigned char strlen;
+    char domain[1];
+} domain_info;
 
 typedef struct _config_info
 {
@@ -335,6 +342,9 @@ typedef struct _config_info
     unsigned char http : 1;
     unsigned char proxy : 1;
     unsigned char capture : 1;
+    endpoint server;
+    unsigned short macs;
+    unsigned short domains;
 } config_info;
 
 typedef struct _capture_info
@@ -371,5 +381,21 @@ typedef struct _capture_info
     } http;
 
 } capture_info;
+
+
+int config_info_length( const config_info * info );
+
+int capture_info_length( const capture_info * info );
+
+
+hash_map create_hash_map( void );
+
+void insert_hash_map( hash_map map, void * key, int key_len, void * value );
+
+void * find_hash_map( hash_map map, void * key, int key_len );
+
+void * remove_hash_map( hash_map map, void * key, int key_len );
+
+void free_hash_map( hash_map map );
 
 #endif // !__COMMON_H__869E7B00_67AB_446B_B145_B196865FAA26

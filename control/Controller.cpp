@@ -15,6 +15,7 @@ struct Controller::Private
 	bool IsStart = false;
 	QString Server = "127.0.0.1:48888";
 	QStringList Domains;
+	QStringList Devices;
 	QStringList Protocols;
 
 	bool IsCapture = false;
@@ -151,6 +152,16 @@ void Controller::SetDomainList( const QStringList & domains )
 	}
 }
 
+const QStringList & Controller::GetDeviceList() const
+{
+	return _p->Devices;
+}
+
+void Controller::SetDeviceList( const QStringList & devices )
+{
+	_p->Devices = devices;
+}
+
 const QStringList & Controller::GetProtocolList() const
 {
 	return _p->Protocols;
@@ -203,6 +214,14 @@ void Controller::ReadConfig( const QByteArray & data )
 			}
 			settings.endArray();
 
+			count = settings.beginReadArray( "Devices" );
+			for( int i = 0; i < count; i++ )
+			{
+				settings.setArrayIndex( i );
+				_p->Devices.push_back( settings.value( "device", "" ).toString() );
+			}
+			settings.endArray();
+
 			count = settings.beginReadArray( "Protocols" );
 			for( int i = 0; i < count; i++ )
 			{
@@ -230,6 +249,14 @@ QByteArray Controller::WriteConfig()
 		{
 			settings.setArrayIndex( i );
 			settings.setValue( "domain", _p->Domains[i] );
+		}
+		settings.endArray();
+
+		settings.beginWriteArray( "Devices" );
+		for( int i = 0; i < _p->Devices.size(); i++ )
+		{
+			settings.setArrayIndex( i );
+			settings.setValue( "device", _p->Devices[i] );
 		}
 		settings.endArray();
 

@@ -45,6 +45,9 @@ set(PROJECT_SOURCES
     ServerListDialog.ui
     ServerListDialog.h
     ServerListDialog.cpp
+    DeviceListDialog.ui
+    DeviceListDialog.h
+    DeviceListDialog.cpp
 )
 
 add_executable(control ${PROJECT_SOURCES})

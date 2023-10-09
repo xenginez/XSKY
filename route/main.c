@@ -26,6 +26,7 @@
 #include <linux/if_vlan.h>
 #include <linux/icmp.h>
 #include <linux/icmpv6.h>
+#include <linux/inetdevice.h>
 
 #include "common/common.h"
 #include "common/common.c"
@@ -44,10 +45,24 @@
 #define NIPV4(addr) ((unsigned char *)&addr)[0], ((unsigned char *)&addr)[1], ((unsigned char *)&addr)[2], ((unsigned char *)&addr)[3]
 #define NIPV6(addr) ((unsigned short *)addr)[0], ((unsigned short *)addr)[1], ((unsigned short *)addr)[2], ((unsigned short *)addr)[3], ((unsigned short *)addr)[4], ((unsigned short *)addr)[5], ((unsigned short *)addr)[6], ((unsigned short *)addr)[7]
 
+struct
+{
+	hash_map nat_map;
+	hash_map hash_map;
+	hash_map limit_map;
+	config_info config;
+	capture_info capture;
+} _device;
 
-static bool skb_is_get_dns( struct sk_buff * skb );
-static bool skb_is_set_config( struct sk_buff * skb );
-static bool skb_is_get_config( struct sk_buff * skb );
+static void load_config( unsigned char * data );
+static void load_capture( unsigned char * data );
+static ipv4_addr get_local_ipv4( struct sk_buff * skb );
+static ipv6_addr get_local_ipv6( struct sk_buff * skb );
+static bool is_local_ipv4( struct sk_buff * skb, ipv4_addr addr );
+static bool is_local_ipv6( struct sk_buff * skb, struct in6_addr addr );
+
+static bool skb_is_dns( struct sk_buff * skb );
+static bool skb_is_config( struct sk_buff * skb );
 static bool skb_is_set_capture( struct sk_buff * skb );
 static bool skb_is_get_capture( struct sk_buff * skb );
 static bool skb_is_client_to_server( struct sk_buff * skb );
@@ -62,7 +77,6 @@ static unsigned int skb_recv_capture( struct sk_buff * skb );
 static unsigned int skb_sendto_dns( struct sk_buff * skb );
 static unsigned int skb_sendto_client( struct sk_buff * skb );
 static unsigned int skb_sendto_server( struct sk_buff * skb );
-static unsigned int skb_sendto_config( struct sk_buff * skb );
 static unsigned int skb_sendto_capture( struct sk_buff * skb );
 
 static unsigned int route_arp_handle( struct sk_buff * skb );
@@ -76,28 +90,146 @@ static unsigned int route_dns_handle( struct sk_buff * skb );
 static unsigned int route_http_handle( struct sk_buff * skb );
 static unsigned int route_https_handle( struct sk_buff * skb );
 
-struct
+static void load_config( unsigned char * data )
 {
-	endpoint server;
-	config_info config;
-	capture_info capture;
-	struct hash_map * hash_map;
-} _device;
+	int i = 0;
+	char url[255];
+	mac_info mac;
+	domain_info domain;
+	hash_map limit_map = create_hash_map();
+	{
+		memcpy( &_device.config, data, sizeof( config_info ) ); data += sizeof( config_info );
+		for( i = 0; i < _device.config.macs; i++ )
+		{
+			memcpy( &mac, data, sizeof( mac_info ) ); data += sizeof( mac_info );
+			insert_hash_map( _device.limit_map, mac.mac.mac, ETH_ALEN, mac.type );
+		}
+		for( i = 0; i < _device.config.domains; i++ )
+		{
+			memcpy( &domain, data, sizeof( domain_info ) ); data += sizeof( domain_info );
+			memset( url, 0, 255 );
+			memcpy( url, data, domain.strlen );
+			insert_hash_map( _device.limit_map, url, domain.strlen, domain.type );
+		}
+	}
+	free_hash_map( _device.limit_map );
+	_device.limit_map = limit_map;
+}
+static void load_capture( unsigned char * data )
+{
+	memcpy( &_device.capture, data, sizeof( capture_info ) );
+}
+static ipv4_addr get_local_ipv4( struct sk_buff * skb )
+{
+	return skb->dev->ip_ptr->ifa_list->ifa_local;
+}
+static ipv6_addr get_local_ipv6( struct sk_buff * skb )
+{
+	ipv6_addr addr;
+	addr.addr32[0] = skb->dev->ip6_ptr->ac_list->aca_addr.in6_u.u6_addr32[0];
+	addr.addr32[1] = skb->dev->ip6_ptr->ac_list->aca_addr.in6_u.u6_addr32[1];
+	addr.addr32[2] = skb->dev->ip6_ptr->ac_list->aca_addr.in6_u.u6_addr32[2];
+	addr.addr32[3] = skb->dev->ip6_ptr->ac_list->aca_addr.in6_u.u6_addr32[3];
+	return addr;
+}
+static bool is_local_ipv4( struct sk_buff * skb, ipv4_addr addr )
+{
+	struct in_ifaddr * ifaddr = skb->dev->ip_ptr->ifa_list;
+	while( ifaddr != NULL )
+	{
+		if( ifaddr->ifa_local == addr )
+			return true;
 
-static bool skb_is_get_dns( struct sk_buff * skb )
+		ifaddr = ifaddr->ifa_next;
+	}
+	return false;
+}
+static bool is_local_ipv6( struct sk_buff * skb, struct in6_addr addr )
+{
+	struct ifacaddr6 * ifaddr = skb->dev->ip6_ptr->ac_list;
+	while( ifaddr != NULL )
+	{
+		if( ifaddr->aca_addr.s6_addr32[0] == addr.s6_addr32[0] &&
+			ifaddr->aca_addr.s6_addr32[1] == addr.s6_addr32[1] && 
+			ifaddr->aca_addr.s6_addr32[2] == addr.s6_addr32[2] && 
+			ifaddr->aca_addr.s6_addr32[3] == addr.s6_addr32[3] )
+			return true;
+
+		ifaddr = ifaddr->aca_next;
+	}
+	return false;
+}
+
+static bool skb_is_dns( struct sk_buff * skb )
 {
 	return false;
 }
-static bool skb_is_set_config( struct sk_buff * skb )
+static bool skb_is_config( struct sk_buff * skb )
 {
-	return false;
-}
-static bool skb_is_get_config( struct sk_buff * skb )
-{
+	struct ethhdr * eth_h = eth_hdr( skb );
+	if( eth_h->h_proto == htons( ETH_TYPE_IPV4 ) )
+	{
+		struct iphdr * ip_h = ip_hdr( skb );
+
+		if( ip_h->protocol == htons( IP_PROTO_UDP ) && is_local_ipv4( skb, ip_h->daddr ) )
+		{
+			struct udphdr * udp_h = udp_hdr( skb );
+
+			if( udp_h->dest == htons( ROUTE_CONFIG_PORT ) )
+			{
+				return true;
+			}
+		}
+	}
+	else if( eth_h->h_proto == htons( ETH_TYPE_IPV6 ) )
+	{
+		struct ipv6hdr * ip_h = ipv6_hdr( skb );
+
+		if( ip_h->nexthdr == htons( IPV6_NEXTHDR_UDP ) && is_local_ipv6( skb, ip_h->daddr ) )
+		{
+			struct udphdr * udp_h = udp_hdr( skb );
+
+			if( udp_h->dest == htons( ROUTE_CONFIG_PORT ) )
+			{
+				return true;
+			}
+		}
+	}
+
 	return false;
 }
 static bool skb_is_set_capture( struct sk_buff * skb )
 {
+	struct ethhdr * eth_h = eth_hdr( skb );
+	if( eth_h->h_proto == htons( ETH_TYPE_IPV4 ) )
+	{
+		struct iphdr * ip_h = ip_hdr( skb );
+
+		if( ip_h->protocol == htons( IP_PROTO_UDP ) && is_local_ipv4( skb, ip_h->daddr ) )
+		{
+			struct udphdr * udp_h = udp_hdr( skb );
+
+			if( udp_h->dest == htons( ROUTE_CAPTURE_PORT ) )
+			{
+				return true;
+			}
+		}
+	}
+	else if( eth_h->h_proto == htons( ETH_TYPE_IPV6 ) )
+	{
+		struct ipv6hdr * ip_h = ipv6_hdr( skb );
+
+		if( ip_h->nexthdr == htons( IPV6_NEXTHDR_UDP ) && is_local_ipv6( skb, ip_h->daddr ) )
+		{
+			struct udphdr * udp_h = udp_hdr( skb );
+
+			if( udp_h->dest == htons( ROUTE_CAPTURE_PORT ) )
+			{
+				return true;
+			}
+		}
+	}
+
 	return false;
 }
 static bool skb_is_get_capture( struct sk_buff * skb )
@@ -148,10 +280,78 @@ static unsigned int skb_recv_server( struct sk_buff * skb )
 }
 static unsigned int skb_recv_config( struct sk_buff * skb )
 {
+	struct ethhdr * eth_h = eth_hdr( skb );
+	if( eth_h->h_proto == htons( ETH_TYPE_IPV4 ) )
+	{
+		struct iphdr * ip_h = ip_hdr( skb );
+
+		if( ip_h->protocol == htons( IP_PROTO_UDP ) && is_local_ipv4( skb, ip_h->daddr ) )
+		{
+			struct udphdr * udp_h = udp_hdr( skb );
+
+			if( udp_h->dest == htons( ROUTE_CONFIG_PORT ) )
+			{
+				load_config( (unsigned char *) ( udp_h + 1 ) );
+
+				return NF_DROP;
+			}
+		}
+	}
+	else if( eth_h->h_proto == htons( ETH_TYPE_IPV6 ) )
+	{
+		struct ipv6hdr * ip_h = ipv6_hdr( skb );
+
+		if( ip_h->nexthdr == htons( IPV6_NEXTHDR_UDP ) && is_local_ipv6( skb, ip_h->daddr ) )
+		{
+			struct udphdr * udp_h = udp_hdr( skb );
+
+			if( udp_h->dest == htons( ROUTE_CONFIG_PORT ) )
+			{
+				load_config( (unsigned char *) ( udp_h + 1 ) );
+
+				return NF_DROP;
+			}
+		}
+	}
+
 	return NF_ACCEPT;
 }
 static unsigned int skb_recv_capture( struct sk_buff * skb )
 {
+	struct ethhdr * eth_h = eth_hdr( skb );
+	if( eth_h->h_proto == htons( ETH_TYPE_IPV4 ) )
+	{
+		struct iphdr * ip_h = ip_hdr( skb );
+
+		if( ip_h->protocol == htons( IP_PROTO_UDP ) && is_local_ipv4( skb, ip_h->daddr ) )
+		{
+			struct udphdr * udp_h = udp_hdr( skb );
+
+			if( udp_h->dest == htons( ROUTE_CONFIG_PORT ) )
+			{
+				load_capture( (unsigned char *) ( udp_h + 1 ) );
+
+				return NF_DROP;
+			}
+		}
+	}
+	else if( eth_h->h_proto == htons( ETH_TYPE_IPV6 ) )
+	{
+		struct ipv6hdr * ip_h = ipv6_hdr( skb );
+
+		if( ip_h->nexthdr == htons( IPV6_NEXTHDR_UDP ) && is_local_ipv6( skb, ip_h->daddr ) )
+		{
+			struct udphdr * udp_h = udp_hdr( skb );
+
+			if( udp_h->dest == htons( ROUTE_CONFIG_PORT ) )
+			{
+				load_capture( (unsigned char *) ( udp_h + 1 ) );
+
+				return NF_DROP;
+			}
+		}
+	}
+
 	return NF_ACCEPT;
 }
 
@@ -164,10 +364,6 @@ static unsigned int skb_sendto_client( struct sk_buff * skb )
 	return NF_ACCEPT;
 }
 static unsigned int skb_sendto_server( struct sk_buff * skb )
-{
-	return NF_ACCEPT;
-}
-static unsigned int skb_sendto_config( struct sk_buff * skb )
 {
 	return NF_ACCEPT;
 }
@@ -285,19 +481,14 @@ static unsigned int route_https_handle( struct sk_buff * skb )
 
 static unsigned int route_nf_handle( void * priv, struct sk_buff * skb, const struct nf_hook_state * state )
 {
-	if( skb_is_get_dns( skb ) )
+	if( skb_is_dns( skb ) )
 	{
 		return skb_recv_dns( skb );
 	}
 
-	if( skb_is_set_config( skb ) )
+	if( skb_is_config( skb ) )
 	{
 		return skb_recv_config( skb );
-	}
-	
-	if( skb_is_get_config( skb ) )
-	{
-		return skb_sendto_config( skb );
 	}
 	
 	if( skb_is_set_capture( skb ) )
@@ -345,7 +536,9 @@ static int __init route_init( void )
 {
 	memset( &_device, 0, sizeof( _device ) );
 	{
+		_device.nat_map = create_hash_map();
 		_device.hash_map = create_hash_map();
+		_device.limit_map = create_hash_map();
 
 	}
 	nf_register_net_hooks( &init_net, route_nf_hook_ops, 2 );
@@ -358,7 +551,9 @@ static int __init route_init( void )
 static void __exit route_exit( void )
 {
 	nf_unregister_net_hooks( &init_net, route_nf_hook_ops, 2 );
+	free_hash_map( _device.limit_map );
 	free_hash_map( _device.hash_map );
+	free_hash_map( _device.nat_map );
 
 	SKY_DBG( "xsky route unloaded\n" );
 }

@@ -201,6 +201,7 @@
     <addaction name="actionProtocol"/>
     <addaction name="actionDomainList"/>
     <addaction name="actionServerList"/>
+    <addaction name="actionDeviceList"/>
    </widget>
    <addaction name="menuControl"/>
    <addaction name="menu"/>
@@ -239,6 +240,11 @@
   <action name="actionCapture">
    <property name="text">
     <string>捕获</string>
+   </property>
+  </action>
+  <action name="actionDeviceList">
+   <property name="text">
+    <string>设备列表</string>
    </property>
   </action>
  </widget>

@@ -17,8 +17,9 @@ public slots:
     void on_actionCapture_triggered( bool checked );
     void on_actionExit_triggered( bool checked );
     void on_actionProtocol_triggered( bool checked );
-    void on_actionDomainList_triggered( bool checked );
     void on_actionServerList_triggered( bool checked );
+    void on_actionDomainList_triggered( bool checked );
+    void on_actionDeviceList_triggered( bool checked );
     void on_labelConnect_clicked();
 
 protected:

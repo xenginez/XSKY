@@ -49,6 +49,10 @@ public:
 
 	void SetDomainList( const QStringList & domains );
 
+	const QStringList & GetDeviceList() const;
+
+	void SetDeviceList( const QStringList & devices );
+
 	const QStringList & GetProtocolList() const;
 
 	void SetProtocolList( const QStringList & protocols );

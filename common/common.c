@@ -7,19 +7,19 @@ typedef struct
 {
 	unsigned int key;
 	void * value;
-} nat_pair;
+} pair;
 
-typedef struct _nat_page
+typedef struct _bucket
 {
-	struct _nat_page * next;
+	struct _bucket * next;
 
 	unsigned long long used;
-	nat_pair pairs[NAT_DATA_PAIR_SIZE];
-} nat_page;
+	pair pairs[NAT_DATA_PAIR_SIZE];
+} bucket;
 
-struct hash_map
+struct _hash_map
 {
-	nat_page pages[NAT_DATA_BUCKET_SIZE];
+	bucket pages[NAT_DATA_BUCKET_SIZE];
 };
 
 unsigned int hash( void * key, int key_len )
@@ -38,22 +38,43 @@ unsigned int hash( void * key, int key_len )
 }
 
 
-struct hash_map * create_hash_map( void )
+int config_info_length( const config_info * info )
 {
-	return (struct hash_map *)vzalloc( sizeof( struct hash_map ) );
+	int i = 0;
+	int size = sizeof( config_info ) + info->macs * sizeof( mac_info );
+
+	domain_info * domain = (domain_info *) ( ( (unsigned char *) info ) + size );
+	for( i = 0; i < info->domains; i++ )
+	{
+		size += sizeof( domain_info ) + domain->strlen;
+		domain = (domain_info *) ( ( (unsigned char *) domain ) + sizeof( domain_info ) + domain->strlen );
+	}
+
+	return size;
 }
 
-void insert_hash_map( struct hash_map * map, void * key, int key_len, void * value )
+int capture_info_length( const capture_info * info )
+{
+	return sizeof( capture_info );
+}
+
+
+hash_map create_hash_map( void )
+{
+	return (hash_map)vzalloc( sizeof( struct _hash_map ) );
+}
+
+void insert_hash_map( hash_map map, void * key, int key_len, void * value )
 {
 	int i = 0;
 	unsigned int h = hash( key, key_len );
 
-	nat_page * page = map->pages + ( h % NAT_DATA_BUCKET_SIZE );
+	bucket * page = map->pages + ( h % NAT_DATA_BUCKET_SIZE );
 	while( page->used == NAT_DATA_PAIR_SIZE )
 	{
 		if( page->next == 0 )
 		{
-			page->next = (nat_page *)vzalloc( sizeof( nat_page ) );
+			page->next = (bucket *)vzalloc( sizeof( bucket ) );
 		}
 
 		page = page->next;
@@ -72,12 +93,12 @@ void insert_hash_map( struct hash_map * map, void * key, int key_len, void * val
 	}
 }
 
-void * find_hash_map( struct hash_map * map, void * key, int key_len )
+void * find_hash_map( hash_map map, void * key, int key_len )
 {
 	int i = 0;
 	unsigned int h = hash( key, key_len );
 
-	nat_page * page = map->pages + ( h % NAT_DATA_BUCKET_SIZE );
+	bucket * page = map->pages + ( h % NAT_DATA_BUCKET_SIZE );
 	while( page != 0 )
 	{
 		for( i = 0; i < NAT_DATA_PAIR_SIZE; ++i )
@@ -99,12 +120,12 @@ void * find_hash_map( struct hash_map * map, void * key, int key_len )
 	return 0;
 }
 
-void * remove_hash_map( struct hash_map * map, void * key, int key_len )
+void * remove_hash_map( hash_map map, void * key, int key_len )
 {
 	int i = 0;
 	unsigned int h = hash( key, key_len );
 
-	nat_page * page = map->pages + ( h % NAT_DATA_BUCKET_SIZE );
+	bucket * page = map->pages + ( h % NAT_DATA_BUCKET_SIZE );
 	while( page != 0 )
 	{
 		for( i = 0; i < NAT_DATA_PAIR_SIZE; ++i )
@@ -132,10 +153,10 @@ void * remove_hash_map( struct hash_map * map, void * key, int key_len )
 	return 0;
 }
 
-void free_hash_map( struct hash_map * map )
+void free_hash_map( hash_map map )
 {
 	int i = 0;
-	nat_page * page = 0, * tpage = 0;
+	bucket * page = 0, * tpage = 0;
 	for( i = 0; i < NAT_DATA_BUCKET_SIZE; ++i )
 	{
 		if( map->pages[i].next != 0 )
