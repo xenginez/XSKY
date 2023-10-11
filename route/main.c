@@ -76,7 +76,6 @@ static unsigned int skb_recv_server( struct sk_buff * skb );
 static unsigned int skb_recv_config( struct sk_buff * skb );
 static unsigned int skb_recv_capture( struct sk_buff * skb );
 
-static unsigned int skb_sendto_dns( struct sk_buff * skb );
 static unsigned int skb_sendto_client( struct sk_buff * skb );
 static unsigned int skb_sendto_server( struct sk_buff * skb );
 static unsigned int skb_sendto_capture( struct sk_buff * skb );
@@ -372,7 +371,60 @@ static bool skb_is_server_to_client( struct sk_buff * skb )
 
 static unsigned int skb_recv_dns( struct sk_buff * skb )
 {
-	return NF_ACCEPT;
+	struct ethhdr * eth = eth_hdr( skb );
+	struct iphdr * ip = ip_hdr( skb );
+	struct udphdr * udp = udp_hdr( skb );
+	protocol_dns * dns = (protocol_dns *) ( udp + 1 );
+
+	char dns_name[] =
+	{
+		0xc0, 0x0c, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x04, 0x0a, 0x0a, 0x0a, 0xfe
+	};
+
+	// dns
+	{
+		dns->flags = htons( 0x8580 );
+		dns->ancount = ntohs( 1 );
+
+		memcpy( &dns_name[sizeof( dns_name ) - 4], get_local_ipv4( skb ), 4 );
+		void * p = skb_put( skb, sizeof( dns_name ) );
+		memcpy( p, dns_name, sizeof( dns_name ) );
+
+
+	}
+	// udp
+	{
+		unsigned short tmp = udp->source;
+		udp->source = udp->dest;
+		udp->dest = tmp;
+		udp->len = htons( ntohs( udp->len ) + sizeof( dns_name ) );
+	}
+	// ip
+	{
+		unsigned int tmp = ip->saddr;
+		ip->saddr = ip->daddr;
+		ip->daddr = tmp;
+
+		ip->id = 0;
+		ip->frag_off = htons( 0x4000 );
+		ip->tot_len = htons( ntohs( ip->tot_len ) + sizeof( dns_name ) );
+	}
+	// eth
+	{
+		unsigned char tmp[ETH_ALEN];
+		memcpy( tmp, eth->h_source, ETH_ALEN );
+		memcpy( eth->h_source, eth->h_dest, ETH_ALEN );
+		memcpy( eth->h_dest, tmp, ETH_ALEN );
+	}
+
+	skb->csum = skb_checksum( skb, ip->ihl * 4, skb->len - ip->ihl * 4, 0 );
+	udp->check = csum_tcpudp_magic( ip->saddr, ip->daddr, skb->len - ip->ihl * 4, IPPROTO_UDP, skb->csum );
+	ip_send_check( ip );
+
+	dev_queue_xmit( skb );
+
+	return NF_QUEUE;
 }
 static unsigned int skb_recv_client( struct sk_buff * skb )
 {
@@ -480,63 +532,6 @@ static unsigned int skb_recv_capture( struct sk_buff * skb )
 	return NF_ACCEPT;
 }
 
-static unsigned int skb_sendto_dns( struct sk_buff * skb )
-{
-	struct ethhdr * eth = eth_hdr( skb );
-	struct iphdr * ip = ip_hdr( skb );
-	struct udphdr * udp = udp_hdr( skb );
-	protocol_dns * dns = (protocol_dns *) ( udp + 1 );
-
-	char dns_name[] =
-	{
-		0xc0, 0x0c, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00,
-		0x00, 0x00, 0x00, 0x04, 0x0a, 0x0a, 0x0a, 0xfe
-	};
-
-	// dns
-	{
-		dns->flags = htons( 0x8580 );
-		dns->ancount = ntohs( 1 );
-
-		memcpy( &dns_name[sizeof( dns_name ) - 4], get_local_ipv4( skb ), 4 );
-		void * p = skb_put( skb, sizeof( dns_name ) );
-		memcpy( p, dns_name, sizeof( dns_name ) );
-
-
-	}
-	// udp
-	{
-		unsigned short tmp = udp->source;
-		udp->source = udp->dest;
-		udp->dest = tmp;
-		udp->len = htons( ntohs( udp->len ) + sizeof( dns_name ) );
-	}
-	// ip
-	{
-		unsigned int tmp = ip->saddr;
-		ip->saddr = ip->daddr;
-		ip->daddr = tmp;
-
-		ip->id = 0;
-		ip->frag_off = htons( 0x4000 );
-		ip->tot_len = htons( ntohs( ip->tot_len ) + sizeof( dns_name ) );
-	}
-	// eth
-	{
-		unsigned char tmp[ETH_ALEN];
-		memcpy( tmp, eth->h_source, ETH_ALEN );
-		memcpy( eth->h_source, eth->h_dest, ETH_ALEN );
-		memcpy( eth->h_dest, tmp, ETH_ALEN );
-	}
-
-	skb->csum = skb_checksum( skb, ip->ihl * 4, skb->len - ip->ihl * 4, 0 );
-	udp->check = csum_tcpudp_magic( ip->saddr, ip->daddr, skb->len - ip->ihl * 4, IPPROTO_UDP, skb->csum );
-	ip_send_check( ip );
-
-	dev_queue_xmit( skb );
-
-	return NF_QUEUE;
-}
 static unsigned int skb_sendto_client( struct sk_buff * skb )
 {
 	return NF_ACCEPT;
