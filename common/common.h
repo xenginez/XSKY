@@ -351,14 +351,21 @@ typedef struct _capture_info
 {
     mac_addr mac;
     endpoint addr;
-    unsigned char arp : 1;
-    unsigned char ip : 1;
-    unsigned char icmp : 1;
-    unsigned char tcp : 1;
-    unsigned char udp : 1;
-    unsigned char dns : 1;
-    unsigned char http : 1;
-    unsigned char https : 1;
+    union
+    {
+        struct
+        {
+            unsigned char arp : 1;
+            unsigned char ip : 1;
+            unsigned char icmp : 1;
+            unsigned char tcp : 1;
+            unsigned char udp : 1;
+            unsigned char dns : 1;
+            unsigned char http : 1;
+            unsigned char https : 1;
+        };
+        unsigned char flags;
+    };
 } capture_info;
 
 

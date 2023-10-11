@@ -75,21 +75,7 @@ static unsigned int skb_recv_client( struct sk_buff * skb );
 static unsigned int skb_recv_server( struct sk_buff * skb );
 static unsigned int skb_recv_config( struct sk_buff * skb );
 static unsigned int skb_recv_capture( struct sk_buff * skb );
-
-static unsigned int skb_sendto_client( struct sk_buff * skb );
-static unsigned int skb_sendto_server( struct sk_buff * skb );
 static unsigned int skb_sendto_capture( struct sk_buff * skb );
-
-static unsigned int route_arp_handle( struct sk_buff * skb );
-static unsigned int route_ipv4_handle( struct sk_buff * skb );
-static unsigned int route_ipv6_handle( struct sk_buff * skb );
-static unsigned int route_icmpv4_handle( struct sk_buff * skb );
-static unsigned int route_icmpv6_handle( struct sk_buff * skb );
-static unsigned int route_tcp_handle( struct sk_buff * skb );
-static unsigned int route_udp_handle( struct sk_buff * skb );
-static unsigned int route_dns_handle( struct sk_buff * skb );
-static unsigned int route_http_handle( struct sk_buff * skb );
-static unsigned int route_https_handle( struct sk_buff * skb );
 
 static void load_config( unsigned char * data )
 {
@@ -103,14 +89,14 @@ static void load_config( unsigned char * data )
 		for( i = 0; i < _device.config.macs; i++ )
 		{
 			memcpy( &mac, data, sizeof( mac_info ) ); data += sizeof( mac_info );
-			insert_hash_map( _device.limit_map, mac.mac.mac, ETH_ALEN, mac.type );
+			insert_hash_map( _device.limit_map, mac.mac.mac, ETH_ALEN, NULL + mac.type );
 		}
 		for( i = 0; i < _device.config.domains; i++ )
 		{
 			memcpy( &domain, data, sizeof( domain_info ) ); data += sizeof( domain_info );
 			memset( url, 0, 255 );
 			memcpy( url, data, domain.strlen );
-			insert_hash_map( _device.limit_map, url, domain.strlen, domain.type );
+			insert_hash_map( _device.limit_map, url, domain.strlen, NULL + domain.type );
 		}
 	}
 	free_hash_map( _device.limit_map );
@@ -274,6 +260,8 @@ static bool skb_is_set_capture( struct sk_buff * skb )
 static bool skb_is_get_capture( struct sk_buff * skb )
 {
 	struct ethhdr * eth_h = eth_hdr( skb );
+	struct tcphdr * tcp_h = NULL;
+	struct udphdr * udp_h = NULL;
 
 	if( eth_h->h_proto == htons( ETH_TYPE_ARP ) )
 	{
@@ -299,7 +287,7 @@ static bool skb_is_get_capture( struct sk_buff * skb )
 				if( _device.capture.tcp != 0 )
 					return true;
 
-				struct tcphdr * tcp_h = tcp_hdr( skb );
+				tcp_h = tcp_hdr( skb );
 
 				if( _device.capture.http && ( tcp_h->dest == htons( HTTP_FIXED_PORT ) || tcp_h->source == htons( HTTP_FIXED_PORT ) ) )
 					return true;
@@ -311,7 +299,7 @@ static bool skb_is_get_capture( struct sk_buff * skb )
 				if( _device.capture.udp != 0 )
 					return true;
 
-				struct udphdr * udp_h = udp_hdr( skb );
+				udp_h = udp_hdr( skb );
 
 				if( _device.capture.dns && ( udp_h->dest == htons( DNS_FIXED_PORT ) || udp_h->source == htons( DNS_FIXED_PORT ) ) )
 					return true;
@@ -338,7 +326,7 @@ static bool skb_is_get_capture( struct sk_buff * skb )
 				if( _device.capture.tcp != 0 )
 					return true;
 
-				struct tcphdr * tcp_h = tcp_hdr( skb );
+				tcp_h = tcp_hdr( skb );
 
 				if( _device.capture.http && ( tcp_h->dest == htons( HTTP_FIXED_PORT ) || tcp_h->source == htons( HTTP_FIXED_PORT ) ) )
 					return true;
@@ -350,7 +338,7 @@ static bool skb_is_get_capture( struct sk_buff * skb )
 				if( _device.capture.udp != 0 )
 					return true;
 
-				struct udphdr * udp_h = udp_hdr( skb );
+				udp_h = udp_hdr( skb );
 
 				if( _device.capture.dns && ( udp_h->dest == htons( DNS_FIXED_PORT ) || udp_h->source == htons( DNS_FIXED_PORT ) ) )
 					return true;
@@ -371,6 +359,7 @@ static bool skb_is_server_to_client( struct sk_buff * skb )
 
 static unsigned int skb_recv_dns( struct sk_buff * skb )
 {
+	ipv4_addr local_ip = get_local_ipv4( skb );
 	struct ethhdr * eth = eth_hdr( skb );
 	struct iphdr * ip = ip_hdr( skb );
 	struct udphdr * udp = udp_hdr( skb );
@@ -387,11 +376,8 @@ static unsigned int skb_recv_dns( struct sk_buff * skb )
 		dns->flags = htons( 0x8580 );
 		dns->ancount = ntohs( 1 );
 
-		memcpy( &dns_name[sizeof( dns_name ) - 4], get_local_ipv4( skb ), 4 );
-		void * p = skb_put( skb, sizeof( dns_name ) );
-		memcpy( p, dns_name, sizeof( dns_name ) );
-
-
+		memcpy( &dns_name[sizeof( dns_name ) - 4], &local_ip, 4 );
+		memcpy( skb_put( skb, sizeof( dns_name ) ), dns_name, sizeof( dns_name ) );
 	}
 	// udp
 	{
@@ -430,22 +416,15 @@ static unsigned int skb_recv_client( struct sk_buff * skb )
 {
 	struct ethhdr * eth_h = eth_hdr( skb );
 
-	if( eth_h->h_proto == htons( ETH_TYPE_ARP ) && _device.config.arp != 0 )
+	if( _device.config.tcp != 0 || _device.config.udp != 0 || _device.config.dns != 0 || _device.config.http != 0 || _device.config.https != 0 )
 	{
-		return route_arp_handle( skb );
-	}
-	else if( eth_h->h_proto == htons( ETH_TYPE_IPV4 ) )
-	{
-		if( _device.config.icmp != 0 || _device.config.tcp != 0 || _device.config.udp != 0 || _device.config.dns != 0 || _device.config.http != 0 )
+		if( eth_h->h_proto == htons( ETH_TYPE_IPV4 ) )
 		{
-			return route_ipv4_handle( skb );
+
 		}
-	}
-	else if( eth_h->h_proto == htons( ETH_TYPE_IPV6 ) )
-	{
-		if( _device.config.icmp != 0 || _device.config.tcp != 0 || _device.config.udp != 0 || _device.config.dns != 0 || _device.config.http != 0 )
+		else if( eth_h->h_proto == htons( ETH_TYPE_IPV6 ) )
 		{
-			return route_ipv6_handle( skb );
+
 		}
 	}
 
@@ -453,6 +432,20 @@ static unsigned int skb_recv_client( struct sk_buff * skb )
 }
 static unsigned int skb_recv_server( struct sk_buff * skb )
 {
+	struct ethhdr * eth_h = eth_hdr( skb );
+
+	if( _device.config.tcp != 0 || _device.config.udp != 0 || _device.config.dns != 0 || _device.config.http != 0 || _device.config.https != 0 )
+	{
+		if( eth_h->h_proto == htons( ETH_TYPE_IPV4 ) )
+		{
+
+		}
+		else if( eth_h->h_proto == htons( ETH_TYPE_IPV6 ) )
+		{
+
+		}
+	}
+
 	return NF_ACCEPT;
 }
 static unsigned int skb_recv_config( struct sk_buff * skb )
@@ -531,33 +524,29 @@ static unsigned int skb_recv_capture( struct sk_buff * skb )
 
 	return NF_ACCEPT;
 }
-
-static unsigned int skb_sendto_client( struct sk_buff * skb )
-{
-	return NF_ACCEPT;
-}
-static unsigned int skb_sendto_server( struct sk_buff * skb )
-{
-	return NF_ACCEPT;
-}
 static unsigned int skb_sendto_capture( struct sk_buff * skb )
 {
+	struct ethhdr * eth = NULL;
+	struct iphdr * ip = NULL;
+	struct udphdr * udp = NULL;
+	void * payload = NULL;
+
 	struct sk_buff * nskb = alloc_skb( skb->len + sizeof( struct iphdr ) + sizeof( struct udphdr ) + LL_RESERVED_SPACE( skb->dev ), GFP_ATOMIC );
 
 	skb_reserve( nskb, LL_RESERVED_SPACE( skb->dev ) );
 
-	struct ethhdr * eth = skb_push( nskb, 14 );
-	struct iphdr * ip = skb_put( nskb, sizeof( struct iphdr ) );
-	struct udphdr * udp = skb_put( nskb, sizeof( struct udphdr ) );
-	void * payload = skb_put( nskb, skb->len );
+	eth = skb_push( nskb, 14 );
+	ip = skb_put( nskb, sizeof( struct iphdr ) );
+	udp = skb_put( nskb, sizeof( struct udphdr ) );
+	payload = skb_put( nskb, skb->len );
 
 	nskb->dev = skb->dev;
 	nskb->pkt_type = PACKET_OTHERHOST;
-	skb->protocol = htons( ETH_P_IP );
-	skb->ip_summed = CHECKSUM_NONE;
-	skb->priority = 0;
-	skb->network_header = ip;
-	skb->transport_header = udp;
+	nskb->protocol = htons( ETH_P_IP );
+	nskb->ip_summed = CHECKSUM_NONE;
+	nskb->priority = 0;
+	nskb->network_header = nskb->head - (unsigned char *)ip;
+	nskb->transport_header = nskb->head - (unsigned char *) udp;
 
 	memcpy( payload, skb->data, skb->len );
 	// udp
@@ -594,113 +583,6 @@ static unsigned int skb_sendto_capture( struct sk_buff * skb )
 
 	dev_queue_xmit( nskb );
 
-	return NF_ACCEPT;
-}
-
-static unsigned int route_arp_handle( struct sk_buff * skb )
-{
-	struct arphdr * arp_h = arp_hdr( skb );
-
-	return NF_ACCEPT;
-}
-static unsigned int route_ipv4_handle( struct sk_buff * skb )
-{
-	struct iphdr * ip_h = ip_hdr( skb );
-
-	if( ip_h->protocol == htons( IP_PROTO_TCP ) )
-	{
-		return route_tcp_handle( skb );
-	}
-	else if( ip_h->protocol == htons( IP_PROTO_UDP ) )
-	{
-		return route_udp_handle( skb );
-	}
-	else if( ip_h->protocol == htons( IP_PROTO_ICMP ) )
-	{
-		return route_icmpv4_handle( skb );
-	}
-
-	return NF_ACCEPT;
-}
-static unsigned int route_ipv6_handle( struct sk_buff * skb )
-{
-	struct ipv6hdr * ip_h = ipv6_hdr( skb );
-
-	if( ip_h->nexthdr == htons( IPV6_NEXTHDR_TCP ) )
-	{
-		return route_tcp_handle( skb );
-	}
-	else if( ip_h->nexthdr == htons( IPV6_NEXTHDR_UDP ) )
-	{
-		return route_udp_handle( skb );
-	}
-	else if( ip_h->nexthdr == htons( IPV6_NEXTHDR_ICMP ) )
-	{
-		return route_icmpv6_handle( skb );
-	}
-
-	return NF_ACCEPT;
-}
-static unsigned int route_icmpv4_handle( struct sk_buff * skb )
-{
-	struct icmphdr * icmp_h = icmp_hdr( skb );
-
-	return NF_ACCEPT;
-}
-static unsigned int route_icmpv6_handle( struct sk_buff * skb )
-{
-	struct icmp6hdr * icmp_h = icmp6_hdr( skb );
-	
-	return NF_ACCEPT;
-}
-static unsigned int route_tcp_handle( struct sk_buff * skb )
-{
-	struct tcphdr * tcp_h = tcp_hdr( skb );
-
-	if( tcp_h->source == htons( HTTP_FIXED_PORT ) || tcp_h->dest == htons( HTTP_FIXED_PORT ) )
-	{
-		return route_http_handle( skb );
-	}
-	else if( tcp_h->source == htons( HTTPS_FIXED_PORT ) || tcp_h->dest == htons( HTTPS_FIXED_PORT ) )
-	{
-		return route_https_handle( skb );
-	}
-	else
-	{
-
-	}
-
-	return NF_ACCEPT;
-}
-static unsigned int route_udp_handle( struct sk_buff * skb )
-{
-	struct udphdr * udp_h = udp_hdr( skb );
-
-	if( udp_h->source == htons( DNS_FIXED_PORT ) || udp_h->dest == htons( DNS_FIXED_PORT ) )
-	{
-		return route_dns_handle( skb );
-	}
-	else
-	{
-
-	}
-
-	return NF_ACCEPT;
-}
-static unsigned int route_dns_handle( struct sk_buff * skb )
-{
-	struct udphdr * udp_h = udp_hdr( skb );
-
-	protocol_dns * dns_h = (protocol_dns *)( udp_h + 1 );
-
-	return NF_ACCEPT;
-}
-static unsigned int route_http_handle( struct sk_buff * skb )
-{
-	return NF_ACCEPT;
-}
-static unsigned int route_https_handle( struct sk_buff * skb )
-{
 	return NF_ACCEPT;
 }
 
