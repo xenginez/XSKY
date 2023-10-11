@@ -340,8 +340,8 @@ typedef struct _config_info
     unsigned char udp : 1;
     unsigned char dns : 1;
     unsigned char http : 1;
+    unsigned char https : 1;
     unsigned char proxy : 1;
-    unsigned char capture : 1;
     endpoint server;
     unsigned short macs;
     unsigned short domains;
@@ -351,35 +351,14 @@ typedef struct _capture_info
 {
     mac_addr mac;
     endpoint addr;
-    struct
-    {
-
-    } arp;
-    struct
-    {
-
-    } ip;
-    struct
-    {
-
-    } icmp;
-    struct
-    {
-
-    } tcp;
-    struct
-    {
-
-    } udp;
-    struct
-    {
-
-    } dns;
-    struct
-    {
-
-    } http;
-
+    unsigned char arp : 1;
+    unsigned char ip : 1;
+    unsigned char icmp : 1;
+    unsigned char tcp : 1;
+    unsigned char udp : 1;
+    unsigned char dns : 1;
+    unsigned char http : 1;
+    unsigned char https : 1;
 } capture_info;
 
 
