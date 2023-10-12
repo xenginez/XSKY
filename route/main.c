@@ -54,6 +54,14 @@ struct
 	capture_info capture;
 } _device;
 
+static bool skb_is_ip( struct sk_buff * skb );
+static bool skb_is_ipv4( struct sk_buff * skb );
+static bool skb_is_ipv6( struct sk_buff * skb );
+static bool skb_is_tcp( struct sk_buff * skb );
+static bool skb_is_udp( struct sk_buff * skb );
+static struct tcphdr * skb_get_tcp( struct sk_buff * skb );
+static struct udphdr * skb_get_udp( struct sk_buff * skb );
+
 static void load_config( unsigned char * data );
 static void load_capture( unsigned char * data );
 static ipv4_addr get_local_ipv4( struct sk_buff * skb );
@@ -76,6 +84,49 @@ static unsigned int skb_recv_server( struct sk_buff * skb );
 static unsigned int skb_recv_config( struct sk_buff * skb );
 static unsigned int skb_recv_capture( struct sk_buff * skb );
 static unsigned int skb_sendto_capture( struct sk_buff * skb );
+
+static bool skb_is_ip( struct sk_buff * skb )
+{
+	struct ethhdr * eth = eth_hdr( skb );
+
+	return ( eth->h_proto == htons( ETH_TYPE_IPV4 ) || eth->h_proto == htons( ETH_TYPE_IPV6 ) );
+}
+static bool skb_is_ipv4( struct sk_buff * skb )
+{
+	struct ethhdr * eth = eth_hdr( skb );
+
+	return ( eth->h_proto == htons( ETH_TYPE_IPV4 ) );
+}
+static bool skb_is_ipv6( struct sk_buff * skb )
+{
+	struct ethhdr * eth = eth_hdr( skb );
+
+	return ( eth->h_proto == htons( ETH_TYPE_IPV6 ) );
+}
+static bool skb_is_tcp( struct sk_buff * skb )
+{
+	struct ethhdr * eth = eth_hdr( skb );
+
+	if( eth->h_proto == htons( ETH_TYPE_IPV4 ) )
+		return ip_hdr( skb )->protocol == htons( IP_PROTO_TCP );
+	else if( eth->h_proto == htons( ETH_TYPE_IPV6 ) )
+		return ipv6_hdr( skb )->nexthdr == htons( IPV6_NEXTHDR_TCP );
+
+	return false;
+}
+static bool skb_is_udp( struct sk_buff * skb )
+{
+	struct ethhdr * eth = eth_hdr( skb );
+
+	if( eth->h_proto == htons( ETH_TYPE_IPV4 ) )
+		return ip_hdr( skb )->protocol == htons( IP_PROTO_UDP );
+	else if( eth->h_proto == htons( ETH_TYPE_IPV6 ) )
+		return ipv6_hdr( skb )->nexthdr == htons( IPV6_NEXTHDR_UDP );
+
+	return false;
+}
+static struct tcphdr * skb_get_tcp( struct sk_buff * skb );
+static struct udphdr * skb_get_udp( struct sk_buff * skb );
 
 static void load_config( unsigned char * data )
 {
@@ -414,18 +465,75 @@ static unsigned int skb_recv_dns( struct sk_buff * skb )
 }
 static unsigned int skb_recv_client( struct sk_buff * skb )
 {
-	struct ethhdr * eth_h = eth_hdr( skb );
+	struct ethhdr * eth = eth_hdr( skb );
+	struct iphdr * ipv4 = NULL;
+	struct ipv6hdr * ipv6 = NULL;
+	struct udphdr * udp = NULL;
+	struct tcphdr * tcp = NULL;
 
 	if( _device.config.tcp != 0 || _device.config.udp != 0 || _device.config.dns != 0 || _device.config.http != 0 || _device.config.https != 0 )
 	{
-		if( eth_h->h_proto == htons( ETH_TYPE_IPV4 ) )
+		if( skb_is_ipv4( skb ) )
 		{
 
 		}
-		else if( eth_h->h_proto == htons( ETH_TYPE_IPV6 ) )
+		else if( skb_is_ipv6( skb ) )
 		{
 
 		}
+
+		if( eth->h_proto == htons( ETH_TYPE_IPV4 ) )
+		{
+			ipv4 = ip_hdr( skb );
+
+			ipv4->daddr = _device.config.server.addr.v4;
+
+			if( ipv4->protocol == htons( IP_PROTO_TCP ) )
+			{
+				tcp = tcp_hdr( skb );
+
+				tcp->dest = _device.config.server.port;
+				tcp->check = csum_tcpudp_magic( ipv4->saddr, ipv4->daddr, skb->len - ipv4->ihl * 4, IPPROTO_TCP, skb->csum );
+			}
+			else if( ipv4->protocol == htons( IP_PROTO_UDP ) )
+			{
+				udp = udp_hdr( skb );
+
+				udp->dest = _device.config.server.port;
+				udp->check = csum_tcpudp_magic( ipv4->saddr, ipv4->daddr, skb->len - ipv4->ihl * 4, IPPROTO_UDP, skb->csum );
+			}
+
+			skb->csum = skb_checksum( skb, ipv4->ihl * 4, skb->len - ipv4->ihl * 4, 0 );
+			ip_send_check( ipv4 );
+		}
+		else if( eth->h_proto == htons( ETH_TYPE_IPV6 ) )
+		{
+			ipv6 = ipv6_hdr( skb );
+
+			memcpy( &ipv6->daddr, &_device.config.server.addr.v6, IPV6_ALEN );
+			
+			if( ipv6->nexthdr == htons( IPV6_NEXTHDR_TCP ) )
+			{
+				tcp = tcp_hdr( skb );
+
+				tcp->dest = _device.config.server.port;
+				tcp->check = csum_tcpudp_magic( ipv4->saddr, ipv4->daddr, skb->len - ipv4->ihl * 4, IPPROTO_TCP, skb->csum );
+			}
+			else if( ipv6->nexthdr == htons( IPV6_NEXTHDR_UDP ) )
+			{
+				udp = udp_hdr( skb );
+
+				udp->dest = _device.config.server.port;
+				udp->check = csum_tcpudp_magic( ipv4->saddr, ipv4->daddr, skb->len - ipv4->ihl * 4, IPPROTO_UDP, skb->csum );
+			}
+		}
+	}
+
+	if( tcp != NULL || udp != NULL )
+	{
+		dev_queue_xmit( skb );
+
+		return NF_QUEUE;
 	}
 
 	return NF_ACCEPT;

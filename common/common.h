@@ -14,6 +14,8 @@ static const unsigned short ROUTE_CAPTURE_PORT = 0xBABA;
 #define TCPOPT_LEN_V4 8  /* |opcode|size|port|ipv4| = 1 + 1 + 2 + 4 */
 #define TCPOPT_LEN_V6 20 /* |opcode|size|port|ipv6| = 1 + 1 + 2 + 16 */
 
+#define IPV6_ALEN 16
+
 #define ETH_ALEN 6
 #define ETH_TYPE_ARP 0x0806
 #define ETH_TYPE_IPV4 0x0800
@@ -155,9 +157,9 @@ typedef unsigned int ipv4_addr;
 
 typedef union _ipv6_addr
 {
-    unsigned char addr8[16];
-    unsigned short addr16[8];
-    unsigned int addr32[4];
+    unsigned char addr8[IPV6_ALEN];
+    unsigned short addr16[IPV6_ALEN / 2];
+    unsigned int addr32[IPV6_ALEN / 4];
 } ipv6_addr;
 
 typedef struct _endpoint
