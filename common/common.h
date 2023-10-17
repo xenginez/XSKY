@@ -386,4 +386,5 @@ void * remove_hash_map( hash_map map, void * key, int key_len );
 
 void free_hash_map( hash_map map );
 
+
 #endif // !__COMMON_H__869E7B00_67AB_446B_B145_B196865FAA26
