@@ -6,11 +6,9 @@ set(KERNEL_DIR /usr/src/linux-headers-5.15.0-84-generic)
 set(KERNEL_INCLUDE_DIR /usr/include)
 
 if(LINUX_KNL)
-
-add_executable (route "main.c")
-target_include_directories(route PRIVATE ${CMAKE_SOURCE_DIR} ${LINUX_HEADER}${KERNEL_DIR} ${LINUX_HEADER}${KERNEL_INCLUDE_DIR})
-target_compile_definitions(route PRIVATE -DMODULE -D__KERNEL__ -D__LITTLE_ENDIAN_BITFIELD -D__UAPI_DEF_IN6_ADDR -D__UAPI_DEF_IN6_ADDR_ALT)
-
+    add_executable (route "main.c")
+    target_include_directories(route PRIVATE ${CMAKE_SOURCE_DIR} ${LINUX_HEADER}${KERNEL_DIR} ${LINUX_HEADER}${KERNEL_INCLUDE_DIR})
+    target_compile_definitions(route PRIVATE -DMODULE -D__KERNEL__ -D__LITTLE_ENDIAN_BITFIELD -D__UAPI_DEF_IN6_ADDR -D__UAPI_DEF_IN6_ADDR_ALT)
 else()
 
 add_custom_target(route ALL cp -r -f ${CMAKE_CURRENT_SOURCE_DIR}/../common ${CMAKE_CURRENT_SOURCE_DIR}/*.c ${CMAKE_CURRENT_BINARY_DIR}/ COMMAND echo "compiling module route.ko...")

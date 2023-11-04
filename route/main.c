@@ -1,835 +1,508 @@
-#include <linux/init.h>
-#include <linux/module.h>
-#include <linux/kernel.h>
-#include <linux/version.h>
-#include <linux/err.h>
-#include <linux/time.h>
-#include <linux/skbuff.h>
-#include <net/tcp.h>
-#include <net/inet_common.h>
-#include <linux/uaccess.h>
-#include <linux/netdevice.h>
-#include <net/net_namespace.h>
-#include <linux/fs.h>
-#include <linux/sysctl.h>
-#include <linux/proc_fs.h>
-#include <linux/kallsyms.h>
-#include <net/ipv6.h>
-#include <net/transp_v6.h>
-#include <linux/netfilter.h>
-#include <linux/netfilter_ipv4.h>
-#include <linux/net.h>
-#include <net/ip.h>
-#include <linux/if_arp.h>
-#include <linux/if_ether.h>
-#include <net/protocol.h>
-#include <linux/if_vlan.h>
-#include <linux/icmp.h>
-#include <linux/icmpv6.h>
-#include <linux/inetdevice.h>
+#include<linux/module.h>
+#include<linux/kernel.h>
+#include<linux/init.h>
+#include<linux/skbuff.h>
+#include<linux/ip.h>
+#include<linux/ipv6.h>
+#include<net/udp.h>
+#include<linux/netfilter.h>
+#include<linux/netfilter_ipv4.h>
+#include<linux/netfilter_ipv6.h>
+#include<net/sock.h>
+#include<linux/inet.h>
+#include<linux/fs.h>
+#include<linux/cdev.h>
+#include<linux/device.h>
+#include<linux/poll.h>
+#include<linux/string.h>
+#include<linux/slab.h>
+#include<linux/errno.h>
+#include<linux/version.h>
 
-#include "common/common.h"
-#include "common/common.c"
+#include "queue.h"
+#include "dev_ctl.h"
 
-#ifdef _WIN32
-#define __init
-#define __exit
-#define module_init()
-#define module_exit()
-#define MODULE_LICENSE()
-#define SKY_DBG(...)	do { printf(KERN_DEBUG "[DEBUG] SKY: " __VA_ARGS__); } while (0)
+#define DEV_NAME XSKY_DEV_NAME
+#define DEV_CLASS XSKY_DEV_NAME
+#define QUEUE_SIZE 256
+
+void calc_subnet( char * buf, char * ipaddress, unsigned char prefix, char is_ipv6 );
+int xsky_set_udp_proxy_subnet( unsigned long arg );
+int xsky_set_tunnel( unsigned long arg );
+int xsky_is_subnet( char * ipaddress, char is_ipv6 );
+unsigned int xsky_push_ipv4_packet_to_user( struct iphdr * ip_header );
+unsigned int xsky_push_ipv6_packet_to_user( struct ipv6hdr * ip6_header );
+unsigned int handle_ipv4_dgram_in( struct iphdr * ip_header );
+unsigned int handle_ipv6_dgram_in( struct ipv6hdr * ip6_header );
+
+unsigned int nf_handle_in(
+#if LINUX_VERSION_CODE<=KERNEL_VERSION(3,1,2)
+	unsigned int hooknum,
+#endif
+#if LINUX_VERSION_CODE>=KERNEL_VERSION(4,4,0)
+	void * priv,
+#endif
+#if LINUX_VERSION_CODE<KERNEL_VERSION(4,4,0) && LINUX_VERSION_CODE>(3,1,2)
+	const struct nf_hook_ops * ops,
+#endif
+	struct sk_buff * skb,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,1,0)
+	const struct nf_hook_state * state
 #else
-#define SKY_DBG(msg...)	do { printk(KERN_DEBUG "[DEBUG] SKY: " msg); } while (0)
-#endif // _WIN32
+	const struct net_device * in,
+	const struct net_device * out,
+	int ( *okfn )( struct sk_buff * )
+#endif
+);
 
-#define NIPV4(addr) ((unsigned char *)&addr)[0], ((unsigned char *)&addr)[1], ((unsigned char *)&addr)[2], ((unsigned char *)&addr)[3]
-#define NIPV6(addr) ((unsigned short *)addr)[0], ((unsigned short *)addr)[1], ((unsigned short *)addr)[2], ((unsigned short *)addr)[3], ((unsigned short *)addr)[4], ((unsigned short *)addr)[5], ((unsigned short *)addr)[6], ((unsigned short *)addr)[7]
+int create_dev( void );
+int delete_dev( void );
+int chr_open( struct inode * node, struct file * f );
+long chr_ioctl( struct file * f, unsigned int cmd, unsigned long arg );
+ssize_t chr_read( struct file * f, char __user * u, size_t size, loff_t * loff );
+ssize_t chr_write( struct file * f, const char __user * u, size_t size, loff_t * loff );
+int chr_release( struct inode * node, struct file * f );
+unsigned int chr_poll( struct file * f, struct poll_table_struct * wait );
 
-struct
+struct xsky_poll
 {
-	hash_map nat_map;
-	hash_map hash_map;
-	hash_map limit_map;
-	config_info config;
-	capture_info capture;
-} _device;
+	wait_queue_head_t inq;
+	struct xsky_queue * r_queue;
+} * poll;
 
-static bool skb_is_ip( struct sk_buff * skb );
-static bool skb_is_ipv4( struct sk_buff * skb );
-static bool skb_is_ipv6( struct sk_buff * skb );
-static bool skb_is_tcp( struct sk_buff * skb );
-static bool skb_is_udp( struct sk_buff * skb );
+dev_t ndev;
+int dev_major = 0;
+char flock_flag = 0;
+struct cdev chr_dev;
+struct class * dev_class;
+struct file_operations chr_ops;
 
-static void load_config( unsigned char * data );
-static void load_capture( unsigned char * data );
-static ipv4_addr get_local_ipv4( struct sk_buff * skb );
-static ipv6_addr get_local_ipv6( struct sk_buff * skb );
-static unsigned char * get_local_mac_addr( struct sk_buff * skb );
-static bool is_local_ipv4( struct sk_buff * skb, ipv4_addr addr );
-static bool is_local_ipv6( struct sk_buff * skb, struct in6_addr addr );
-static bool is_local_mac_addr( struct sk_buff * skb, unsigned char * addr );
+char xsky_tunnel_addr[4];
+char xsky_tunnel_addr6[16];
 
-static bool skb_is_dns( struct sk_buff * skb );
-static bool skb_is_config( struct sk_buff * skb );
-static bool skb_is_set_capture( struct sk_buff * skb );
-static bool skb_is_get_capture( struct sk_buff * skb );
-static bool skb_is_client_to_server( struct sk_buff * skb );
-static bool skb_is_server_to_client( struct sk_buff * skb );
+struct xsky_subnet subnet;
+struct xsky_subnet subnet6;
 
-static unsigned int skb_recv_dns( struct sk_buff * skb );
-static unsigned int skb_recv_client( struct sk_buff * skb );
-static unsigned int skb_recv_server( struct sk_buff * skb );
-static unsigned int skb_recv_config( struct sk_buff * skb );
-static unsigned int skb_recv_capture( struct sk_buff * skb );
+char is_set_subnet = 0;
+char is_set_subnet6 = 0;
+char is_set_tunnel_addr = 0;
+char is_set_tunnel_addr6 = 0;
 
-static unsigned int skb_sendto_client( struct sk_buff * skb );
-static unsigned int skb_sendto_server( struct sk_buff * skb );
-static unsigned int skb_sendto_capture( struct sk_buff * skb );
-
-static bool skb_is_ip( struct sk_buff * skb )
+struct nf_hook_ops nf_ops =
 {
-	struct ethhdr * eth = eth_hdr( skb );
-
-	return ( eth->h_proto == htons( ETH_TYPE_IPV4 ) || eth->h_proto == htons( ETH_TYPE_IPV6 ) );
-}
-static bool skb_is_ipv4( struct sk_buff * skb )
-{
-	struct ethhdr * eth = eth_hdr( skb );
-
-	return ( eth->h_proto == htons( ETH_TYPE_IPV4 ) );
-}
-static bool skb_is_ipv6( struct sk_buff * skb )
-{
-	struct ethhdr * eth = eth_hdr( skb );
-
-	return ( eth->h_proto == htons( ETH_TYPE_IPV6 ) );
-}
-static bool skb_is_tcp( struct sk_buff * skb )
-{
-	struct ethhdr * eth = eth_hdr( skb );
-
-	if( eth->h_proto == htons( ETH_TYPE_IPV4 ) )
-		return ip_hdr( skb )->protocol == htons( IP_PROTO_TCP );
-	else if( eth->h_proto == htons( ETH_TYPE_IPV6 ) )
-		return ipv6_hdr( skb )->nexthdr == htons( IPV6_NEXTHDR_TCP );
-
-	return false;
-}
-static bool skb_is_udp( struct sk_buff * skb )
-{
-	struct ethhdr * eth = eth_hdr( skb );
-
-	if( eth->h_proto == htons( ETH_TYPE_IPV4 ) )
-		return ip_hdr( skb )->protocol == htons( IP_PROTO_UDP );
-	else if( eth->h_proto == htons( ETH_TYPE_IPV6 ) )
-		return ipv6_hdr( skb )->nexthdr == htons( IPV6_NEXTHDR_UDP );
-
-	return false;
-}
-
-static void load_config( unsigned char * data )
-{
-	int i = 0;
-	char url[255];
-	mac_info mac;
-	domain_info domain;
-	hash_map limit_map = create_hash_map();
-	{
-		memcpy( &_device.config, data, sizeof( config_info ) ); data += sizeof( config_info );
-		for( i = 0; i < _device.config.macs; i++ )
-		{
-			memcpy( &mac, data, sizeof( mac_info ) ); data += sizeof( mac_info );
-			insert_hash_map( _device.limit_map, mac.mac.mac, ETH_ALEN, NULL + mac.type );
-		}
-		for( i = 0; i < _device.config.domains; i++ )
-		{
-			memcpy( &domain, data, sizeof( domain_info ) ); data += sizeof( domain_info );
-			memset( url, 0, 255 );
-			memcpy( url, data, domain.strlen );
-			insert_hash_map( _device.limit_map, url, domain.strlen, NULL + domain.type );
-		}
-	}
-	free_hash_map( _device.limit_map );
-	_device.limit_map = limit_map;
-}
-static void load_capture( unsigned char * data )
-{
-	memcpy( &_device.capture, data, sizeof( capture_info ) );
-}
-static ipv4_addr get_local_ipv4( struct sk_buff * skb )
-{
-	return skb->dev->ip_ptr->ifa_list->ifa_local;
-}
-static ipv6_addr get_local_ipv6( struct sk_buff * skb )
-{
-	ipv6_addr addr;
-	addr.addr32[0] = skb->dev->ip6_ptr->ac_list->aca_addr.in6_u.u6_addr32[0];
-	addr.addr32[1] = skb->dev->ip6_ptr->ac_list->aca_addr.in6_u.u6_addr32[1];
-	addr.addr32[2] = skb->dev->ip6_ptr->ac_list->aca_addr.in6_u.u6_addr32[2];
-	addr.addr32[3] = skb->dev->ip6_ptr->ac_list->aca_addr.in6_u.u6_addr32[3];
-	return addr;
-}
-static unsigned char * get_local_mac_addr( struct sk_buff * skb )
-{
-	return skb->dev->dev_addr;
-}
-static bool is_local_ipv4( struct sk_buff * skb, ipv4_addr addr )
-{
-	struct in_ifaddr * ifaddr = skb->dev->ip_ptr->ifa_list;
-	while( ifaddr != NULL )
-	{
-		if( ifaddr->ifa_local == addr )
-			return true;
-
-		ifaddr = ifaddr->ifa_next;
-	}
-	return false;
-}
-static bool is_local_ipv6( struct sk_buff * skb, struct in6_addr addr )
-{
-	struct ifacaddr6 * ifaddr = skb->dev->ip6_ptr->ac_list;
-	while( ifaddr != NULL )
-	{
-		if( ifaddr->aca_addr.s6_addr32[0] == addr.s6_addr32[0] &&
-			ifaddr->aca_addr.s6_addr32[1] == addr.s6_addr32[1] && 
-			ifaddr->aca_addr.s6_addr32[2] == addr.s6_addr32[2] && 
-			ifaddr->aca_addr.s6_addr32[3] == addr.s6_addr32[3] )
-			return true;
-
-		ifaddr = ifaddr->aca_next;
-	}
-	return false;
-}
-static bool is_local_mac_addr( struct sk_buff * skb, unsigned char * addr )
-{
-	return memcmp( skb->dev->dev_addr, addr, ETH_ALEN ) == 0;
-}
-
-static bool skb_is_dns( struct sk_buff * skb )
-{
-	struct ethhdr * eth_h = eth_hdr( skb );
-	if( eth_h->h_proto == htons( ETH_TYPE_IPV4 ) )
-	{
-		struct iphdr * ip_h = ip_hdr( skb );
-
-		if( ip_h->protocol == htons( IP_PROTO_UDP ) )
-		{
-			struct udphdr * udp_h = udp_hdr( skb );
-
-			if( udp_h->dest == htons( DNS_FIXED_PORT ) )
-			{
-				return strnstr( (const char *) ( udp_h + 1 ), ROUTE_URL, ntohs( udp_h->len ) ) != NULL;
-			}
-		}
-	}
-	else if( eth_h->h_proto == htons( ETH_TYPE_IPV6 ) )
-	{
-		struct ipv6hdr * ip_h = ipv6_hdr( skb );
-
-		if( ip_h->nexthdr == htons( IPV6_NEXTHDR_UDP ) )
-		{
-			struct udphdr * udp_h = udp_hdr( skb );
-
-			if( udp_h->dest == htons( DNS_FIXED_PORT ) )
-			{
-				return strnstr( (const char *) ( udp_h + 1 ), ROUTE_URL, ntohs( udp_h->len ) ) != NULL;
-			}
-		}
-	}
-
-	return false;
-}
-static bool skb_is_config( struct sk_buff * skb )
-{
-	struct ethhdr * eth_h = eth_hdr( skb );
-	if( eth_h->h_proto == htons( ETH_TYPE_IPV4 ) )
-	{
-		struct iphdr * ip_h = ip_hdr( skb );
-
-		if( ip_h->protocol == htons( IP_PROTO_UDP ) && is_local_ipv4( skb, ip_h->daddr ) )
-		{
-			struct udphdr * udp_h = udp_hdr( skb );
-
-			if( udp_h->dest == htons( ROUTE_CONFIG_PORT ) )
-			{
-				return true;
-			}
-		}
-	}
-	else if( eth_h->h_proto == htons( ETH_TYPE_IPV6 ) )
-	{
-		struct ipv6hdr * ip_h = ipv6_hdr( skb );
-
-		if( ip_h->nexthdr == htons( IPV6_NEXTHDR_UDP ) && is_local_ipv6( skb, ip_h->daddr ) )
-		{
-			struct udphdr * udp_h = udp_hdr( skb );
-
-			if( udp_h->dest == htons( ROUTE_CONFIG_PORT ) )
-			{
-				return true;
-			}
-		}
-	}
-
-	return false;
-}
-static bool skb_is_set_capture( struct sk_buff * skb )
-{
-	struct ethhdr * eth_h = eth_hdr( skb );
-	if( eth_h->h_proto == htons( ETH_TYPE_IPV4 ) )
-	{
-		struct iphdr * ip_h = ip_hdr( skb );
-
-		if( ip_h->protocol == htons( IP_PROTO_UDP ) && is_local_ipv4( skb, ip_h->daddr ) )
-		{
-			struct udphdr * udp_h = udp_hdr( skb );
-
-			if( udp_h->dest == htons( ROUTE_CAPTURE_PORT ) )
-			{
-				return true;
-			}
-		}
-	}
-	else if( eth_h->h_proto == htons( ETH_TYPE_IPV6 ) )
-	{
-		struct ipv6hdr * ip_h = ipv6_hdr( skb );
-
-		if( ip_h->nexthdr == htons( IPV6_NEXTHDR_UDP ) && is_local_ipv6( skb, ip_h->daddr ) )
-		{
-			struct udphdr * udp_h = udp_hdr( skb );
-
-			if( udp_h->dest == htons( ROUTE_CAPTURE_PORT ) )
-			{
-				return true;
-			}
-		}
-	}
-
-	return false;
-}
-static bool skb_is_get_capture( struct sk_buff * skb )
-{
-	struct ethhdr * eth_h = eth_hdr( skb );
-	struct tcphdr * tcp_h = NULL;
-	struct udphdr * udp_h = NULL;
-
-	if( eth_h->h_proto == htons( ETH_TYPE_ARP ) )
-	{
-		return _device.capture.arp != 0;
-	}
-	else if( eth_h->h_proto == htons( ETH_TYPE_IPV4 ) )
-	{
-		struct iphdr * ip_h = ip_hdr( skb );
-
-		if( !is_local_ipv4( skb, ip_h->saddr ) )
-		{
-			if( _device.capture.ip != 0 )
-			{
-				return true;
-			}
-			else if( ip_h->protocol == htons( IP_PROTO_ICMP ) )
-			{
-				if( _device.capture.icmp != 0 )
-					return true;
-			}
-			else if( ip_h->protocol == htons( IP_PROTO_TCP ) )
-			{
-				if( _device.capture.tcp != 0 )
-					return true;
-
-				tcp_h = tcp_hdr( skb );
-
-				if( _device.capture.http && ( tcp_h->dest == htons( HTTP_FIXED_PORT ) || tcp_h->source == htons( HTTP_FIXED_PORT ) ) )
-					return true;
-				else if( _device.capture.https && ( tcp_h->dest == htons( HTTPS_FIXED_PORT ) || tcp_h->source == htons( HTTPS_FIXED_PORT ) ) )
-					return true;
-			}
-			else if( ip_h->protocol == htons( IP_PROTO_UDP ) )
-			{
-				if( _device.capture.udp != 0 )
-					return true;
-
-				udp_h = udp_hdr( skb );
-
-				if( _device.capture.dns && ( udp_h->dest == htons( DNS_FIXED_PORT ) || udp_h->source == htons( DNS_FIXED_PORT ) ) )
-					return true;
-			}
-		}
-	}
-	else if( eth_h->h_proto == htons( ETH_TYPE_IPV6 ) )
-	{
-		struct ipv6hdr * ip_h = ipv6_hdr( skb );
-
-		if( !is_local_ipv6( skb, ip_h->saddr ) )
-		{
-			if( _device.capture.ip != 0 )
-			{
-				return true;
-			}
-			else if( ip_h->nexthdr == htons( IPV6_NEXTHDR_ICMP ) )
-			{
-				if( _device.capture.icmp != 0 )
-					return true;
-			}
-			else if( ip_h->nexthdr == htons( IPV6_NEXTHDR_TCP ) )
-			{
-				if( _device.capture.tcp != 0 )
-					return true;
-
-				tcp_h = tcp_hdr( skb );
-
-				if( _device.capture.http && ( tcp_h->dest == htons( HTTP_FIXED_PORT ) || tcp_h->source == htons( HTTP_FIXED_PORT ) ) )
-					return true;
-				else if( _device.capture.https && ( tcp_h->dest == htons( HTTPS_FIXED_PORT ) || tcp_h->source == htons( HTTPS_FIXED_PORT ) ) )
-					return true;
-			}
-			else if( ip_h->nexthdr == htons( IPV6_NEXTHDR_UDP ) )
-			{
-				if( _device.capture.udp != 0 )
-					return true;
-
-				udp_h = udp_hdr( skb );
-
-				if( _device.capture.dns && ( udp_h->dest == htons( DNS_FIXED_PORT ) || udp_h->source == htons( DNS_FIXED_PORT ) ) )
-					return true;
-			}
-		}
-	}
-
-	return false;
-}
-static bool skb_is_client_to_server( struct sk_buff * skb )
-{
-	return false;
-}
-static bool skb_is_server_to_client( struct sk_buff * skb )
-{
-	return false;
-}
-
-static unsigned int skb_recv_dns( struct sk_buff * skb )
-{
-	ipv4_addr local_ip = get_local_ipv4( skb );
-	struct ethhdr * eth = eth_hdr( skb );
-	struct iphdr * ip = ip_hdr( skb );
-	struct udphdr * udp = udp_hdr( skb );
-	protocol_dns * dns = (protocol_dns *) ( udp + 1 );
-
-	char dns_name[] =
-	{
-		0xc0, 0x0c, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00,
-		0x00, 0x00, 0x00, 0x04, 0x0a, 0x0a, 0x0a, 0xfe
-	};
-
-	// dns
-	{
-		dns->flags = htons( 0x8580 );
-		dns->ancount = ntohs( 1 );
-
-		memcpy( &dns_name[sizeof( dns_name ) - 4], &local_ip, 4 );
-		memcpy( skb_put( skb, sizeof( dns_name ) ), dns_name, sizeof( dns_name ) );
-	}
-	// udp
-	{
-		unsigned short tmp = udp->source;
-		udp->source = udp->dest;
-		udp->dest = tmp;
-		udp->len = htons( ntohs( udp->len ) + sizeof( dns_name ) );
-	}
-	// ip
-	{
-		unsigned int tmp = ip->saddr;
-		ip->saddr = ip->daddr;
-		ip->daddr = tmp;
-
-		ip->id = 0;
-		ip->frag_off = htons( 0x4000 );
-		ip->tot_len = htons( ntohs( ip->tot_len ) + sizeof( dns_name ) );
-	}
-	// eth
-	{
-		unsigned char tmp[ETH_ALEN];
-		memcpy( tmp, eth->h_source, ETH_ALEN );
-		memcpy( eth->h_source, eth->h_dest, ETH_ALEN );
-		memcpy( eth->h_dest, tmp, ETH_ALEN );
-	}
-
-	skb->csum = skb_checksum( skb, ip->ihl * 4, skb->len - ip->ihl * 4, 0 );
-	udp->check = csum_tcpudp_magic( ip->saddr, ip->daddr, skb->len - ip->ihl * 4, IPPROTO_UDP, skb->csum );
-	ip_send_check( ip );
-
-	dev_queue_xmit( skb );
-
-	return NF_QUEUE;
-}
-static unsigned int skb_recv_client( struct sk_buff * skb )
-{
-	if( _device.config.tcp != 0 || _device.config.udp != 0 || _device.config.dns != 0 || _device.config.http != 0 || _device.config.https != 0 )
-	{
-		if( skb_is_tcp( skb ) )
-		{
-			return skb_sendto_server( skb );
-		}
-	}
-
-	return NF_ACCEPT;
-}
-static unsigned int skb_recv_server( struct sk_buff * skb )
-{
-	if( _device.config.tcp != 0 || _device.config.udp != 0 || _device.config.dns != 0 || _device.config.http != 0 || _device.config.https != 0 )
-	{
-		if( skb_is_tcp( skb ) )
-		{
-			return skb_sendto_client( skb );
-		}
-	}
-
-	return NF_ACCEPT;
-}
-static unsigned int skb_recv_config( struct sk_buff * skb )
-{
-	struct ethhdr * eth_h = eth_hdr( skb );
-	if( eth_h->h_proto == htons( ETH_TYPE_IPV4 ) )
-	{
-		struct iphdr * ip_h = ip_hdr( skb );
-
-		if( ip_h->protocol == htons( IP_PROTO_UDP ) && is_local_ipv4( skb, ip_h->daddr ) )
-		{
-			struct udphdr * udp_h = udp_hdr( skb );
-
-			if( udp_h->dest == htons( ROUTE_CONFIG_PORT ) )
-			{
-				load_config( (unsigned char *) ( udp_h + 1 ) );
-
-				return NF_DROP;
-			}
-		}
-	}
-	else if( eth_h->h_proto == htons( ETH_TYPE_IPV6 ) )
-	{
-		struct ipv6hdr * ip_h = ipv6_hdr( skb );
-
-		if( ip_h->nexthdr == htons( IPV6_NEXTHDR_UDP ) && is_local_ipv6( skb, ip_h->daddr ) )
-		{
-			struct udphdr * udp_h = udp_hdr( skb );
-
-			if( udp_h->dest == htons( ROUTE_CONFIG_PORT ) )
-			{
-				load_config( (unsigned char *) ( udp_h + 1 ) );
-
-				return NF_DROP;
-			}
-		}
-	}
-
-	return NF_ACCEPT;
-}
-static unsigned int skb_recv_capture( struct sk_buff * skb )
-{
-	struct ethhdr * eth_h = eth_hdr( skb );
-	if( eth_h->h_proto == htons( ETH_TYPE_IPV4 ) )
-	{
-		struct iphdr * ip_h = ip_hdr( skb );
-
-		if( ip_h->protocol == htons( IP_PROTO_UDP ) && is_local_ipv4( skb, ip_h->daddr ) )
-		{
-			struct udphdr * udp_h = udp_hdr( skb );
-
-			if( udp_h->dest == htons( ROUTE_CONFIG_PORT ) )
-			{
-				load_capture( (unsigned char *) ( udp_h + 1 ) );
-
-				return NF_DROP;
-			}
-		}
-	}
-	else if( eth_h->h_proto == htons( ETH_TYPE_IPV6 ) )
-	{
-		struct ipv6hdr * ip_h = ipv6_hdr( skb );
-
-		if( ip_h->nexthdr == htons( IPV6_NEXTHDR_UDP ) && is_local_ipv6( skb, ip_h->daddr ) )
-		{
-			struct udphdr * udp_h = udp_hdr( skb );
-
-			if( udp_h->dest == htons( ROUTE_CONFIG_PORT ) )
-			{
-				load_capture( (unsigned char *) ( udp_h + 1 ) );
-
-				return NF_DROP;
-			}
-		}
-	}
-
-	return NF_ACCEPT;
-}
-
-static unsigned int skb_sendto_client( struct sk_buff * skb )
-{
-	struct ethhdr * eth = NULL;
-	struct iphdr * ip = NULL;
-	struct tcphdr * tcp = NULL;
-	unsigned char * payload = NULL;
-
-	struct sk_buff * nskb = alloc_skb( skb->len + TCPOPT_LEN_V4 + LL_RESERVED_SPACE( skb->dev ), GFP_ATOMIC );
-
-	skb_reserve( nskb, LL_RESERVED_SPACE( skb->dev ) );
-
-	eth = skb_push( nskb, sizeof( struct ethhdr ) );
-	ip = skb_put( nskb, sizeof( struct iphdr ) );
-	tcp = skb_put( nskb, sizeof( struct tcphdr ) );
-	payload = skb_put( nskb, ip->tot_len - sizeof( struct iphdr ) - sizeof( struct tcphdr ) );
-
-	nskb->dev = skb->dev;
-	nskb->pkt_type = PACKET_OTHERHOST;
-	nskb->protocol = htons( ETH_P_IP );
-	nskb->ip_summed = CHECKSUM_NONE;
-	nskb->priority = 0;
-	nskb->network_header = nskb->head - (unsigned char *) ip;
-	nskb->transport_header = nskb->head - (unsigned char *) tcp;
-
-	// tcp opt
-	{
-		*payload = TCPOPT_OP_V4; payload += 1;
-		*payload = 2; payload += 1;
-		*( (unsigned short *) payload ) = tcp_hdr( skb )->dest; payload += 2;
-		*( (unsigned int *) payload ) = ip_hdr( skb )->daddr; payload += 4;
-	}
-	// payload
-	{
-		memcpy( payload, ( (unsigned char *) tcp_hdr( skb ) ) + sizeof( struct tcphdr ), ip_hdr( skb )->tot_len - sizeof( struct iphdr ) - sizeof( struct tcphdr ) );
-	}
-	// tcp
-	{
-		memcpy( tcp, tcp_hdr( skb ), sizeof( struct tcphdr ) );
-
-		tcp->check = 0;
-		tcp->dest = _device.config.server.port;
-	}
-	// ip
-	{
-		memcpy( ip, ip_hdr( skb ), sizeof( struct tcphdr ) );
-
-		ip->check = 0;
-		ip->daddr = _device.config.server.addr.v4;
-		ip->tot_len = htons( ntohs( ip->tot_len ) + TCPOPT_LEN_V4 );
-	}
-	// eth
-	{
-		memcpy( eth, eth_hdr( skb ), sizeof( struct ethhdr ) );
-	}
-
-	nskb->csum = skb_checksum( nskb, ip->ihl * 4, nskb->len - ip->ihl * 4, 0 );
-	tcp->check = csum_tcpudp_magic( ip->saddr, ip->daddr, nskb->len - ip->ihl * 4, IPPROTO_TCP, skb->csum );
-	ip_send_check( ip );
-
-	dev_queue_xmit( nskb );
-
-	return NF_DROP;
-}
-static unsigned int skb_sendto_server( struct sk_buff * skb )
-{
-	struct ethhdr * eth = NULL;
-	struct iphdr * ip = NULL;
-	struct tcphdr * tcp = NULL;
-	unsigned char * payload = NULL;
-	ipv4_addr addr = 0;
-	unsigned short port = 0;
-
-	struct sk_buff * nskb = alloc_skb( skb->len - TCPOPT_LEN_V4 + LL_RESERVED_SPACE( skb->dev ), GFP_ATOMIC );
-
-	skb_reserve( nskb, LL_RESERVED_SPACE( skb->dev ) );
-
-	eth = skb_push( nskb, sizeof( struct ethhdr ) );
-	ip = skb_put( nskb, sizeof( struct iphdr ) );
-	tcp = skb_put( nskb, sizeof( struct tcphdr ) );
-	payload = skb_put( nskb, ip->tot_len - sizeof( struct iphdr ) - sizeof( struct tcphdr ) );
-
-	nskb->dev = skb->dev;
-	nskb->pkt_type = PACKET_OTHERHOST;
-	nskb->protocol = htons( ETH_P_IP );
-	nskb->ip_summed = CHECKSUM_NONE;
-	nskb->priority = 0;
-	nskb->network_header = nskb->head - (unsigned char *) ip;
-	nskb->transport_header = nskb->head - (unsigned char *) tcp;
-
-	// tcp opt
-	{
-		port = *( (unsigned short *) ( ( (unsigned char *) tcp_hdr( skb ) ) + sizeof( struct tcphdr ) + 2 ) );
-		addr = *( (unsigned int *) ( ( (unsigned char *) tcp_hdr( skb ) ) + sizeof( struct tcphdr ) + 4 ) );
-	}
-	// payload
-	{
-		memcpy( payload, ( (unsigned char *) tcp_hdr( skb ) ) + sizeof( struct tcphdr ) + TCPOPT_LEN_V4, ip_hdr( skb )->tot_len - sizeof( struct iphdr ) - sizeof( struct tcphdr ) - TCPOPT_LEN_V4 );
-	}
-	// tcp
-	{
-		memcpy( tcp, tcp_hdr( skb ), sizeof( struct tcphdr ) );
-
-		tcp->check = 0;
-		tcp->source = port;
-	}
-	// ip
-	{
-		memcpy( ip, ip_hdr( skb ), sizeof( struct tcphdr ) );
-
-		ip->check = 0;
-		ip->saddr = addr;
-		ip->tot_len = htons( ntohs( ip->tot_len ) - TCPOPT_LEN_V4 );
-	}
-	// eth
-	{
-		memcpy( eth, eth_hdr( skb ), sizeof( struct ethhdr ) );
-	}
-
-	nskb->csum = skb_checksum( nskb, ip->ihl * 4, nskb->len - ip->ihl * 4, 0 );
-	tcp->check = csum_tcpudp_magic( ip->saddr, ip->daddr, nskb->len - ip->ihl * 4, IPPROTO_TCP, skb->csum );
-	ip_send_check( ip );
-
-	dev_queue_xmit( nskb );
-
-	return NF_DROP;
-}
-static unsigned int skb_sendto_capture( struct sk_buff * skb )
-{
-	struct ethhdr * eth = NULL;
-	struct iphdr * ip = NULL;
-	struct udphdr * udp = NULL;
-	void * payload = NULL;
-
-	struct sk_buff * nskb = alloc_skb( skb->len + sizeof( struct iphdr ) + sizeof( struct udphdr ) + LL_RESERVED_SPACE( skb->dev ), GFP_ATOMIC );
-
-	skb_reserve( nskb, LL_RESERVED_SPACE( skb->dev ) );
-
-	eth = skb_push( nskb, 14 );
-	ip = skb_put( nskb, sizeof( struct iphdr ) );
-	udp = skb_put( nskb, sizeof( struct udphdr ) );
-	payload = skb_put( nskb, skb->len );
-
-	nskb->dev = skb->dev;
-	nskb->pkt_type = PACKET_OTHERHOST;
-	nskb->protocol = htons( ETH_P_IP );
-	nskb->ip_summed = CHECKSUM_NONE;
-	nskb->priority = 0;
-	nskb->network_header = nskb->head - (unsigned char *)ip;
-	nskb->transport_header = nskb->head - (unsigned char *) udp;
-
-	memcpy( payload, skb->data, skb->len );
-	// udp
-	{
-		udp->check = 0;
-
-		udp->len = skb->len;
-		udp->dest = htons( ROUTE_CAPTURE_PORT );
-		udp->source = htons( ROUTE_CAPTURE_PORT );
-	}
-	// ip
-	{
-		ip->version = 4;
-		ip->ihl = sizeof( struct iphdr ) >> 2;
-		ip->frag_off = 0;
-		ip->protocol = IPPROTO_UDP;
-		ip->tos = 0;
-		ip->daddr = _device.capture.addr.addr.v4;
-		ip->saddr = get_local_ipv4(skb);
-		ip->ttl = 0x40;
-		ip->tot_len = htons( skb->len );
-		ip->check = 0;
-	}
-	// eth
-	{
-		memcpy( eth->h_dest, _device.capture.mac.mac, ETH_ALEN );
-		memcpy( eth->h_source, get_local_mac_addr( skb ), ETH_ALEN );
-		eth->h_proto = htons( ETH_P_IP );
-	}
-
-	nskb->csum = skb_checksum( nskb, ip->ihl * 4, nskb->len - ip->ihl * 4, 0 );
-	udp->check = csum_tcpudp_magic( ip->saddr, ip->daddr, nskb->len - ip->ihl * 4, IPPROTO_UDP, skb->csum );
-	ip_send_check( ip );
-
-	dev_queue_xmit( nskb );
-
-	return NF_ACCEPT;
-}
-
-static unsigned int route_nf_handle( void * priv, struct sk_buff * skb, const struct nf_hook_state * state )
-{
-	if( skb_is_dns( skb ) )
-	{
-		return skb_recv_dns( skb );
-	}
-
-	if( skb_is_config( skb ) )
-	{
-		return skb_recv_config( skb );
-	}
-	
-	if( skb_is_set_capture( skb ) )
-	{
-		return skb_recv_capture( skb );
-	}
-	
-	if( skb_is_get_capture( skb ) )
-	{
-		skb_sendto_capture( skb );
-	}
-
-	if( _device.config.proxy != 0 )
-	{
-		if( skb_is_client_to_server( skb ) )
-		{
-			return skb_recv_client( skb );
-		}
-		else if( skb_is_server_to_client( skb ) )
-		{
-			return skb_recv_server( skb );
-		}
-	}
-
-	return NF_ACCEPT;
-}
-
-static struct nf_hook_ops route_nf_hook_ops[] =
-{
-	{
-		.hook = route_nf_handle,
-		.pf = NFPROTO_ARP,
-		.hooknum = NF_INET_PRE_ROUTING,
-		.priority = NF_IP_PRI_FIRST,
-	},
-	{
-		.hook = route_nf_handle,
-		.pf = NFPROTO_INET,
-		.hooknum = NF_INET_PRE_ROUTING,
-		.priority = NF_IP_PRI_FIRST,
-	}
+	.hook = nf_handle_in,
+	.hooknum = NF_INET_FORWARD,
+	.pf = PF_INET,
+	.priority = NF_IP_PRI_FIRST
 };
 
-static int __init route_init( void )
+struct nf_hook_ops nf6_ops =
 {
-	memset( &_device, 0, sizeof( _device ) );
+	.hook = nf_handle_in,
+	.hooknum = NF_INET_FORWARD,
+	.pf = PF_INET6,
+	.priority = NF_IP6_PRI_FIRST
+};
+
+struct file_operations chr_ops =
+{
+	.owner = THIS_MODULE,
+	.open = chr_open,
+	.unlocked_ioctl = chr_ioctl,
+	.read = chr_read,
+	.write = chr_write,
+	.release = chr_release,
+	.poll = chr_poll
+};
+
+
+void calc_subnet( char * buf, char * ipaddress, unsigned char prefix, char is_ipv6 )
+{
+	int n = 4;
+	unsigned char a, b;
+	unsigned char tables[] =
 	{
-		_device.nat_map = create_hash_map();
-		_device.hash_map = create_hash_map();
-		_device.limit_map = create_hash_map();
+		128,192,224,240,248,252,254,
+	};
 
+	if ( is_ipv6 ) n = 16;
+
+	memset( buf, 0, n );
+
+	a = prefix / 8;
+	b = prefix % 8;
+
+	for ( int i = 0; i < a; i++ )
+	{
+		buf[i] = ipaddress[i];
 	}
-	nf_register_net_hooks( &init_net, route_nf_hook_ops, 2 );
+	if ( b )
+		buf[a] = tables[b - 1] & ipaddress[a];
 
-	SKY_DBG( "xsky route loaded\n" );
+	return;
+}
+
+int xsky_set_udp_proxy_subnet( unsigned long arg )
+{
+	struct xsky_subnet tmp, * t;
+
+	int err = copy_from_user( &tmp, (unsigned long *)arg, sizeof( struct xsky_subnet ) );
+	if ( err ) return -EINVAL;
+
+	if ( tmp.is_ipv6 && tmp.prefix > 128 ) return -EINVAL;
+	if ( !tmp.is_ipv6 && tmp.prefix > 32 ) return -EINVAL;
+
+	if ( tmp.is_ipv6 ) t = &subnet6;
+	else t = &subnet;
+
+	calc_subnet( t->address, tmp.address, tmp.prefix, tmp.is_ipv6 );
+
+	//printk("%d %d %d %d----\r\n",(UC)tmp.address[0],(UC)tmp.address[1],(UC)tmp.address[2],(UC)tmp.address[3]);
+
+	t->is_ipv6 = tmp.is_ipv6;
+	t->prefix = tmp.prefix;
+
+	if ( t->is_ipv6 ) is_set_subnet6 = 1;
+	else is_set_subnet = 1;
 
 	return 0;
 }
 
-static void __exit route_exit( void )
+int xsky_set_tunnel( unsigned long arg )
 {
-	nf_unregister_net_hooks( &init_net, route_nf_hook_ops, 2 );
-	free_hash_map( _device.limit_map );
-	free_hash_map( _device.hash_map );
-	free_hash_map( _device.nat_map );
+	struct xsky_address tmp;
 
-	SKY_DBG( "xsky route unloaded\n" );
+	int err = copy_from_user( &tmp, (unsigned long *)arg, sizeof( struct xsky_address ) );
+	if ( err ) return -EINVAL;
+
+	if ( tmp.is_ipv6 )
+	{
+		memcpy( xsky_tunnel_addr6, tmp.address, 16 );
+		is_set_tunnel_addr6 = 1;
+	}
+	else
+	{
+		memcpy( xsky_tunnel_addr, tmp.address, 4 );
+		is_set_tunnel_addr = 1;
+	}
+
+	return 0;
 }
 
-module_init( route_init );
-module_exit( route_exit );
+int xsky_is_subnet( char * ipaddress, char is_ipv6 )
+{
+	char buf[16];
+	int n = 4;
+	struct xsky_subnet * t;
+
+	if ( is_ipv6 )
+	{
+		t = &subnet6;
+		n = 16;
+	}
+	else
+	{
+		t = &subnet;
+	}
+
+	calc_subnet( buf, ipaddress, t->prefix, is_ipv6 );
+	//printk("----%d %d %d %d --%d %d %d %d\r\n",(UC)buf[0],(UC)buf[1],(UC)buf[2],(UC)buf[3],(UC)t->address[0],(UC)t->address[1],(UC)t->address[2],(UC)t->address[3]);
+	return !memcmp( buf, t->address, n );
+}
+
+unsigned int xsky_push_ipv4_packet_to_user( struct iphdr * ip_header )
+{
+	int err, tot_len;
+	tot_len = ntohs( ip_header->tot_len );
+	err = xsky_queue_push( poll->r_queue, (char *)ip_header, tot_len );
+
+	if ( err ) return NF_ACCEPT;
+	wake_up_interruptible( &poll->inq );
+
+	return NF_DROP;
+}
+
+unsigned int xsky_push_ipv6_packet_to_user( struct ipv6hdr * ip6_header )
+{
+	int err = 0;
+	unsigned short data_len = ntohs( ip6_header->payload_len ) + 40;
+	err = xsky_queue_push( poll->r_queue, (char *)ip6_header, data_len );
+	if ( err ) return NF_ACCEPT;
+
+	wake_up_interruptible( &poll->inq );
+
+	return NF_DROP;
+}
+
+unsigned int handle_ipv4_dgram_in( struct iphdr * ip_header )
+{
+	unsigned int saddr = (unsigned int)ip_header->saddr;
+	unsigned int daddr = (unsigned int)ip_header->daddr;
+
+	if ( is_set_tunnel_addr && 0 == memcmp( xsky_tunnel_addr, (char *)( &daddr ), 4 ) )
+		return NF_ACCEPT;
+
+	if ( !xsky_is_subnet( (char *)( &saddr ), 0 ) )
+		return NF_ACCEPT;
+
+	return xsky_push_ipv4_packet_to_user( ip_header );
+}
+
+unsigned int handle_ipv6_dgram_in( struct ipv6hdr * ip6_header )
+{
+	unsigned char * saddr = ( ip6_header->saddr ).s6_addr;
+	unsigned char * daddr = ( ip6_header->daddr ).s6_addr;
+
+	if ( is_set_tunnel_addr6 && 0 == memcmp( xsky_tunnel_addr6, daddr, 16 ) )
+		return NF_ACCEPT;
+
+	if ( !xsky_is_subnet( saddr, 1 ) )
+		return NF_ACCEPT;
+
+	return xsky_push_ipv6_packet_to_user( ip6_header );
+}
+
+unsigned int nf_handle_in(
+#if LINUX_VERSION_CODE<=KERNEL_VERSION(3,1,2)
+	unsigned int hooknum,
+#endif
+#if LINUX_VERSION_CODE>=KERNEL_VERSION(4,4,0)
+	void * priv,
+#endif
+#if LINUX_VERSION_CODE<KERNEL_VERSION(4,4,0) && LINUX_VERSION_CODE>(3,1,2)
+	const struct nf_hook_ops * ops,
+#endif
+	struct sk_buff * skb,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,1,0)
+	const struct nf_hook_state * state
+#else
+	const struct net_device * in,
+	const struct net_device * out,
+	int ( *okfn )( struct sk_buff * )
+#endif
+)
+{
+	unsigned char nexthdr;
+	struct iphdr * ip_header;
+	struct ipv6hdr * ip6_header;
+
+	if ( !flock_flag ) return NF_ACCEPT;
+
+	if ( !skb ) return NF_ACCEPT;
+
+	ip_header = (struct iphdr *)skb_network_header( skb );
+
+	if ( !ip_header )
+		return NF_ACCEPT;
+
+	if ( 4 == ip_header->version )
+	{
+		nexthdr = ip_header->protocol;
+	}
+	else
+	{
+		ip6_header = (struct ipv6hdr *)ipv6_hdr( skb );
+		
+		if ( !ip6_header )
+			return NF_ACCEPT;
+		
+		nexthdr = ip6_header->nexthdr;
+	}
+
+	if ( nexthdr != 17 && nexthdr != 136 )
+		return NF_ACCEPT;
+
+	if ( 4 == ip_header->version )
+		return handle_ipv4_dgram_in( ip_header );
+
+	return handle_ipv6_dgram_in( ip6_header );
+}
+
+
+int create_dev( void )
+{
+	int ret;
+	cdev_init( &chr_dev, &chr_ops );
+	ret = alloc_chrdev_region( &ndev, 0, 1, DEV_NAME );
+
+	if ( ret < 0 )
+		return ret;
+
+	cdev_add( &chr_dev, ndev, 1 );
+	dev_class = class_create( THIS_MODULE, DEV_CLASS );
+
+	if ( IS_ERR( dev_class ) )
+	{
+		printk( "ERR:failed in creating class\r\n" );
+		return -1;
+	}
+
+	dev_major = MAJOR( ndev );
+	device_create( dev_class, NULL, ndev, "%s", DEV_NAME );
+
+	return 0;
+}
+
+int delete_dev( void )
+{
+	cdev_del( &chr_dev );
+	device_destroy( dev_class, ndev );
+	class_destroy( dev_class );
+	unregister_chrdev_region( ndev, 0 );
+
+	return 0;
+}
+
+int chr_open( struct inode * node, struct file * f )
+{
+	int major, minor;
+	major = MAJOR( node->i_rdev );
+	minor = MINOR( node->i_rdev );
+
+	if ( flock_flag )
+		return -EBUSY;
+
+	flock_flag = 1;
+	f->private_data = poll;
+
+	return 0;
+}
+
+long chr_ioctl( struct file * f, unsigned int cmd, unsigned long arg )
+{
+	int ret = 0;
+	if ( _IOC_TYPE( cmd ) != XSKY_IOC_MAGIC )
+		return -EINVAL;
+
+	switch ( cmd )
+	{
+	case XSKY_IOC_SET_UDP_PROXY_SUBNET:
+		ret = xsky_set_udp_proxy_subnet( arg );
+		break;
+	case XSKY_IOC_SET_TUNNEL_IP:
+		ret = xsky_set_tunnel( arg );
+		break;
+	default:
+		ret = -EINVAL;
+		break;
+	}
+
+	return ret;
+}
+
+ssize_t chr_read( struct file * f, char __user * u, size_t size, loff_t * loff )
+{
+	struct xsky_queue_data * tmp;
+
+	tmp = xsky_queue_pop( poll->r_queue );
+
+	if ( NULL == tmp )
+		return -EAGAIN;
+
+	if ( 0 != copy_to_user( u, tmp->data, tmp->size ) )
+		return -EFAULT;
+
+	return tmp->size;
+}
+
+ssize_t chr_write( struct file * f, const char __user * u, size_t size, loff_t * loff )
+{
+
+}
+
+int chr_release( struct inode * node, struct file * f )
+{
+	flock_flag = 0;
+	xsky_queue_reset( poll->r_queue );
+
+	return 0;
+}
+
+unsigned int chr_poll( struct file * f, struct poll_table_struct * wait )
+{
+	struct xsky_poll * p;
+	unsigned int mask = 0;
+	p = f->private_data;
+
+	poll_wait( f, &p->inq, wait );
+	if ( p->r_queue->have )
+		mask = POLLIN | POLLRDNORM;
+	else
+		mask = POLLRDNORM;
+
+	return mask;
+}
+
+
+#if LINUX_VERSION_CODE>=KERNEL_VERSION(4,13,0)
+int nf_register_hook( struct nf_hook_ops * reg )
+{
+	struct net * net, * last;
+	int ret;
+
+	rtnl_lock();
+	for_each_net( net )
+	{
+		ret = nf_register_net_hook( net, reg );
+		if ( ret && ret != -ENOENT )
+			goto rollback;
+	}
+	rtnl_unlock();
+
+	return 0;
+rollback:
+	last = net;
+	for_each_net( net )
+	{
+		if ( net == last )
+			break;
+		nf_unregister_net_hook( net, reg );
+	}
+	rtnl_unlock();
+	return ret;
+}
+
+static void nf_unregister_hook( struct nf_hook_ops * reg )
+{
+	struct net * net;
+
+	rtnl_lock();
+	for_each_net( net )
+		nf_unregister_net_hook( net, reg );
+	rtnl_unlock();
+}
+#endif
+
+int xsky_init( void )
+{
+	int ret = create_dev();
+	if ( 0 != ret )
+		return ret;
+
+	nf_register_hook( &nf_ops );
+	nf_register_hook( &nf6_ops );
+
+	poll = kmalloc( sizeof( struct xsky_poll ), GFP_ATOMIC );
+	init_waitqueue_head( &poll->inq );
+
+	poll->r_queue = xsky_queue_init( QUEUE_SIZE );
+
+	return 0;
+}
+
+void xsky_exit( void )
+{
+	delete_dev();
+	nf_unregister_hook( &nf_ops );
+	nf_unregister_hook( &nf6_ops );
+	xsky_queue_release( poll->r_queue );
+
+	kfree( poll );
+}
+
+module_init( xsky_init );
+module_exit( xsky_exit );
+
 MODULE_LICENSE( "GPL" );
+MODULE_AUTHOR( "xsky" );
+MODULE_DESCRIPTION( "the module for xsky" );

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(control LANGUAGES CXX)
+project(client LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -50,8 +50,8 @@ set(PROJECT_SOURCES
     DeviceListDialog.cpp
 )
 
-add_executable(control ${PROJECT_SOURCES})
+add_executable(client ${PROJECT_SOURCES})
 
-set_target_properties(control PROPERTIES WIN32_EXECUTABLE TRUE)
+set_target_properties(client PROPERTIES WIN32_EXECUTABLE TRUE)
 
-target_link_libraries(control PUBLIC Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
+target_link_libraries(client PUBLIC Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
