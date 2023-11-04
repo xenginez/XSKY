@@ -22,7 +22,7 @@ struct task_pool
 			{
 				while ( !exit )
 				{
-					std::shared_ptr<task> task;
+					std::shared_ptr<xsky::task> task;
 
 					if ( !queue.try_dequeue( task ) )
 					{
