@@ -4,7 +4,7 @@
 
 int main( int argc, char * argv[] )
 {
-	controller::instance()->init();
+	xsky::controller::instance()->init();
 
 	while ( char c = getchar() )
 	{
@@ -12,7 +12,7 @@ int main( int argc, char * argv[] )
 			break;
 	}
 
-	controller::instance()->release();
+	xsky::controller::instance()->release();
 
 	return 0;
 }
