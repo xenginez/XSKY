@@ -9,6 +9,7 @@
 #include <concurrentqueue.h>
 
 #include "task.h"
+#include "apnic.h"
 #include "device.h"
 
 struct task_pool
@@ -69,6 +70,7 @@ struct task_pool
 
 struct xsky::controller::private_p
 {
+	xsky::apnic apn;
 	xsky::device dev;
 	std::thread thread;
 	asio::io_context io;
@@ -99,7 +101,7 @@ void xsky::controller::init()
 {
 	_p->pool = std::make_shared<task_pool>();
 	_p->dev.open( create );
-	
+	_p->apn.init();
 	_p->work = std::make_shared<asio::io_context::work>( _p->io );
 	_p->thread = std::thread( [this](){ _p->io.run(); } );
 	_p->accept = std::make_shared<asio::ip::tcp::acceptor>( _p->io, asio::ip::tcp::endpoint( asio::ip::address::from_string( "127.0.0.1" ), 48888 ) );
@@ -111,6 +113,8 @@ void xsky::controller::release()
 {
 	_p->pool = nullptr;
 	_p->dev.close();
+
+	_p->apn.release();
 
 	_p->accept = nullptr;
 	_p->work = nullptr;
@@ -138,5 +142,9 @@ void xsky::controller::config()
 
 void xsky::controller::create( std::uint8_t * data, std::size_t size )
 {
+	if ( size > sizeof( protocol_ipv4 * ) )
+	{
+		auto ip = (protocol_ipv4 *)data;
 
+	}
 }
