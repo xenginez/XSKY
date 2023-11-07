@@ -1,5 +1,7 @@
 #include "mmap.h"
 
+#include <fstream>
+
 #ifdef _WIN32
 #include <windows.h>
 #else
@@ -33,6 +35,12 @@ xsky::mmap::~mmap()
 bool xsky::mmap::open( const std::filesystem::path & path, std::size_t size )
 {
 	close();
+
+	if ( !std::filesystem::exists( path ) )
+	{
+		std::ofstream ofs( path, std::ios::out | std::ios::binary );
+		ofs.close();
+	}
 
 	auto file_ = ::CreateFileA( path.string().c_str(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL );
 	auto mapping_ = ::CreateFileMappingA( file_, NULL, PAGE_READWRITE, DWORD( size & 0xFFFFFFFF00000000 ), DWORD( size & 0x00000000FFFFFFFF ), NULL );
@@ -75,6 +83,12 @@ void xsky::mmap::close()
 bool xsky::mmap::open( const std::filesystem::path & path, std::size_t size )
 {
 	close();
+
+	if ( !std::filesystem::exists( path ) )
+	{
+		std::ofstream ofs( path, std::ios::out | std::ios::binary );
+		ofs.close();
+	}
 
 	auto file_ = open( path.string().c_str(), O_RDONLY );
 	if ( file_ != -1 )

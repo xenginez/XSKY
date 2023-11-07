@@ -25,22 +25,15 @@ static const unsigned short ROUTE_CAPTURE_PORT = 0xBABA;
 #define IP_VERSION_6 0x0110
 #define IP_PROTO_TCP 6
 #define IP_PROTO_UDP 17
-#define IP_PROTO_ICMP 1
-#define IPV6_NEXTHDR_TCP 6
-#define IPV6_NEXTHDR_UDP 17
-#define IPV6_NEXTHDR_ICMP 58
+#define IPV6_NEXTHDR_UDP 136
 
 #define DNS_TYPE_A 1
 #define DNS_TYPE_AAAA 28
 #define DNS_CLASS_IN 1
-#define DNS_FIXED_PORT 53
 
+#define DNS_FIXED_PORT 53
 #define HTTP_FIXED_PORT 80
 #define HTTPS_FIXED_PORT 443
-
-#define LIMIT_TYPE_DISCHARGE 0
-#define LIMIT_TYPE_PROXY 1
-#define LIMIT_TYPE_MASK 2
 
 enum command
 {
@@ -48,7 +41,8 @@ enum command
     QUEUE,
     RESET,
     ACCEPT,
-}; // id(64) + cmd(8) + size(16) + data(...)
+    SERVER,
+};
 
 typedef unsigned int ipv4_addr;
 
@@ -83,8 +77,8 @@ typedef struct _protocol_eth
 
 typedef struct _protocol_ipv4
 {
-    unsigned int ihl : 4;
     unsigned int version : 4;
+    unsigned int ihl : 4;
     unsigned char tos;
     unsigned short tot_len;
     unsigned short id;

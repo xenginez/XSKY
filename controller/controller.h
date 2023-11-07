@@ -37,7 +37,7 @@ namespace xsky
 		void config();
 
 	private:
-		static void create( std::uint8_t * data, std::size_t size );
+		void create( std::uint8_t * data, std::uint32_t size );
 
 	private:
 		private_p * _p;

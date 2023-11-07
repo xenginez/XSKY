@@ -4,7 +4,7 @@
 
 namespace xsky
 {
-	class dns_task : public task
+	class https3_task : public task
 	{
 	public:
 		void execute() override;

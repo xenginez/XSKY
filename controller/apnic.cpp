@@ -47,7 +47,8 @@ void xsky::apnic::init()
 {
 	_p->_exit = false;
 	_p->_ipv4.open( std::filesystem::current_path() / "apnic_ipv4", (size_t)1024 * 1024 * 64 );
-	_p->_ipv6.open( std::filesystem::current_path() / "apnic_ipv6", (size_t)1024 * 1024 * 1024 * 4 );
+	_p->_ipv6.open( std::filesystem::current_path() / "apnic_ipv6", (size_t)1024 * 1024 * 1024 * 3 );
+
 	sync();
 }
 

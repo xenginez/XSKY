@@ -1,9 +1,10 @@
 #ifndef XSKY_QUEUE_H
 #define XSKY_QUEUE_H
 
-#include<linux/types.h>
-#include<linux/vmalloc.h>
-#include<linux/string.h>
+#include <linux/types.h>
+#include <linux/vmalloc.h>
+#include <linux/string.h>
+#include <linux/spinlock.h>
 
 #define MALLOC(size) vmalloc(size)
 #define FREE(p) vfree(p)
@@ -25,7 +26,8 @@ struct xsky_queue
     struct xsky_queue_data * list;
 
     size_t have;
-    size_t total_size;
+    size_t size;
+    spinlock_t lock;
 };
 
 struct xsky_queue * xsky_queue_init( size_t qsize )
@@ -54,7 +56,9 @@ struct xsky_queue * xsky_queue_init( size_t qsize )
 
     queue->list->previous = tmp;
     tmp->next = queue->list;
-    queue->total_size = qsize;
+    queue->size = qsize;
+
+    spin_lock_init( &queue->lock );
 
     return queue;
 }
@@ -66,8 +70,10 @@ int xsky_queue_push( struct xsky_queue * queue, char * data, size_t size )
     if ( size > XSKY_MTU )
         return -1;
 
-    if ( queue->total_size == queue->have )
+    if ( queue->size == queue->have )
         return -2;
+
+    spin_lock( &queue->lock );
 
     if ( 0 == queue->have )
     {
@@ -87,6 +93,8 @@ int xsky_queue_push( struct xsky_queue * queue, char * data, size_t size )
     queue->end = tmp;
     queue->have += 1;
 
+    spin_unlock( &queue->lock );
+
     return 0;
 }
 
@@ -97,9 +105,13 @@ struct xsky_queue_data * xsky_queue_pop( struct xsky_queue * queue )
     if ( 0 == queue->have )
         return tmp;
 
+    spin_lock( &queue->lock );
+
     tmp = queue->begin;
     queue->begin = tmp->next;
     queue->have -= 1;
+
+    spin_unlock( &queue->lock );
 
     return tmp;
 }
@@ -112,7 +124,7 @@ void xsky_queue_reset( struct xsky_queue * queue )
 void xsky_queue_release( struct xsky_queue * queue )
 {
     struct xsky_queue_data * tmp_a = NULL, * tmp_b = NULL;
-    size_t qsize = queue->total_size;
+    size_t qsize = queue->size;
 
     for ( int n = 0; n < qsize; n++ )
     {

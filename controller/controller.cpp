@@ -11,6 +11,7 @@
 #include "task.h"
 #include "apnic.h"
 #include "device.h"
+#include "tasks/tasks.h"
 
 struct task_pool
 {
@@ -21,22 +22,7 @@ struct task_pool
 		{
 			pool.emplace_back( [this]()
 			{
-				while ( !exit )
-				{
-					std::shared_ptr<xsky::task> task;
-
-					if ( !queue.try_dequeue( task ) )
-					{
-						std::unique_lock<std::mutex> lock( mutex );
-						cond.wait( lock );
-					}
-
-					if ( task != nullptr )
-					{
-						task->execute();
-						task = nullptr;
-					}
-				}
+				execute();
 			} );
 		}
 	}
@@ -61,6 +47,27 @@ struct task_pool
 		cond.notify_one();
 	}
 
+	void execute()
+	{
+		while ( !exit )
+		{
+			std::shared_ptr<xsky::task> task;
+
+			if ( !queue.try_dequeue( task ) )
+			{
+				std::unique_lock<std::mutex> lock( mutex );
+				cond.wait( lock );
+			}
+
+			if ( task != nullptr )
+			{
+				task->execute();
+				task->close();
+				task = nullptr;
+			}
+		}
+	}
+
 	bool exit;
 	std::mutex mutex;
 	std::condition_variable cond;
@@ -71,11 +78,11 @@ struct task_pool
 struct xsky::controller::private_p
 {
 	xsky::apnic apn;
-	xsky::device dev;
 	std::thread thread;
 	asio::io_context io;
 	asio::streambuf buf;
 	std::shared_ptr<task_pool> pool;
+	std::shared_ptr<xsky::device> dev;
 	std::shared_ptr<asio::io_context::work> work;
 	std::shared_ptr<asio::ip::tcp::socket> socket;
 	std::shared_ptr<asio::ip::tcp::acceptor> accept;
@@ -99,11 +106,18 @@ xsky::controller * xsky::controller::instance()
 
 void xsky::controller::init()
 {
-	_p->pool = std::make_shared<task_pool>();
-	_p->dev.open( create );
 	_p->apn.init();
+	_p->dev = std::make_shared<device>();
+	_p->pool = std::make_shared<task_pool>();
+	_p->dev->open( [this]( std::uint8_t * data, std::uint32_t size )
+	{
+		create( data, size );
+	} );
 	_p->work = std::make_shared<asio::io_context::work>( _p->io );
-	_p->thread = std::thread( [this](){ _p->io.run(); } );
+	_p->thread = std::thread( [this]()
+	{
+		_p->io.run();
+	} );
 	_p->accept = std::make_shared<asio::ip::tcp::acceptor>( _p->io, asio::ip::tcp::endpoint( asio::ip::address::from_string( "127.0.0.1" ), 48888 ) );
 
 	accept();
@@ -111,8 +125,9 @@ void xsky::controller::init()
 
 void xsky::controller::release()
 {
+	_p->dev->close();
+	_p->dev = nullptr;
 	_p->pool = nullptr;
-	_p->dev.close();
 
 	_p->apn.release();
 
@@ -140,11 +155,58 @@ void xsky::controller::config()
 	//_p->socket->async_receive( _p->buf,  );
 }
 
-void xsky::controller::create( std::uint8_t * data, std::size_t size )
+void xsky::controller::create( std::uint8_t * data, std::uint32_t size )
 {
 	if ( size > sizeof( protocol_ipv4 * ) )
 	{
-		auto ip = (protocol_ipv4 *)data;
+		std::uint64_t id = *( (std::uint64_t *)data );
+		data += sizeof( std::uint64_t );
 
+		std::shared_ptr<task> task;
+		protocol_tcp * tcp = nullptr;
+		protocol_udp * udp = nullptr;
+
+		if ( ( (protocol_ipv4 *)data )->version == IP_VERSION_4 )
+		{
+			if ( ( (protocol_ipv4 *)data )->protocol == IP_PROTO_TCP )
+				tcp = (protocol_tcp *)( data + sizeof( protocol_ipv4 ) );
+			else if ( ( (protocol_ipv4 *)data )->protocol == IP_PROTO_UDP )
+				udp = (protocol_udp *)( data + sizeof( protocol_ipv4 ) );
+		}
+		else
+		{
+			if ( ( (protocol_ipv6 *)data )->nexthdr == IP_PROTO_TCP )
+				tcp = (protocol_tcp *)( data + sizeof( protocol_ipv4 ) );
+			else if ( ( (protocol_ipv6 *)data )->nexthdr == IP_PROTO_UDP )
+				udp = (protocol_udp *)( data + sizeof( protocol_ipv4 ) );
+			else if ( ( (protocol_ipv6 *)data )->nexthdr == IPV6_NEXTHDR_UDP )
+				udp = (protocol_udp *)( data + sizeof( protocol_ipv4 ) );
+		}
+
+		if ( tcp != nullptr )
+		{
+			if ( ::ntohs( tcp->dest ) == HTTP_FIXED_PORT )
+				task = std::make_shared<http_task>();
+			else if ( ::ntohs( tcp->dest ) == HTTPS_FIXED_PORT )
+				task = std::make_shared<https_task>();
+			else
+				task = std::make_shared<tcp_task>();
+		}
+		else if ( udp != nullptr )
+		{
+			if ( ::ntohs( udp->dest ) == DNS_FIXED_PORT )
+				task = std::make_shared<dns_task>();
+			else if ( ::ntohs( udp->dest ) == HTTPS_FIXED_PORT )
+				task = std::make_shared<https3_task>();
+			else
+				task = std::make_shared<udp_task>();
+		}
+
+		if ( task )
+		{
+			task->init( _p->dev, id, data, size );
+
+			_p->pool->push( task );
+		}
 	}
 }

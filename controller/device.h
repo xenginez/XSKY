@@ -16,20 +16,25 @@ namespace xsky
 {
 	class device
 	{
+	private:
+		struct private_p;
+
 	public:
 		device();
 
 		~device();
 
 	public:
-		void open( const std::function<void( std::uint8_t *, std::size_t )> & callback );
+		void open( const std::function<void( std::uint8_t *, std::uint32_t )> & callback );
 
 		void close();
 
 		void ioctl( unsigned long cmd, unsigned long arg = 0 );
 
+		void write( std::uint64_t id, std::uint8_t cmd, std::uint8_t * data, std::uint32_t size );
+
 	private:
-		std::function<void( std::uint8_t *, std::size_t )> _callback;
+		private_p * _p;
 	};
 }
 
