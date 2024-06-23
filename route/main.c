@@ -122,7 +122,7 @@ void calc_subnet( char * buf, char * ipaddress, unsigned char prefix, char is_ip
 	unsigned char a, b;
 	unsigned char tables[] =
 	{
-		128,192,224,240,248,252,254,
+		128, 192, 224, 240, 248, 252, 254,
 	};
 
 	if ( is_ipv6 ) n = 16;
